@@ -60,12 +60,19 @@ export function parseConfig(values) {
     requiredSetting(settings, "payroll.filter_column"),
     "payroll.filter_column"
   );
+  const storeFilterReference = parseSheetReference(
+    requiredSetting(settings, "payroll.store_filter_column"),
+    "payroll.store_filter_column"
+  );
 
   if (headersReference.sheet !== dataReference.sheet) {
     throw new Error("Payroll headers and data ranges must be on the same sheet.");
   }
   if (filterReference.sheet !== dataReference.sheet) {
     throw new Error("Payroll filter column must be on the same sheet as the data range.");
+  }
+  if (storeFilterReference.sheet !== dataReference.sheet) {
+    throw new Error("Payroll store filter column must be on the same sheet as the data range.");
   }
 
   const output = buildOutputConfig(settings);
@@ -155,6 +162,7 @@ export function parseConfig(values) {
       cellRange: dataReference.address,
       headers: headersReference.address,
       filterColumn: extractStartColumn(filterReference.address),
+      storeFilterColumn: extractStartColumn(storeFilterReference.address),
     },
     output,
     assumptions,

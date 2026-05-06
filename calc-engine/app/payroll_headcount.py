@@ -29,6 +29,7 @@ DETAIL_OUTPUT_KEYS = {
     "bonus_accrual": "payroll.output.bonus_accrual",
     "bonus_payout": "payroll.output.bonus_payout",
 }
+STORE_DETAIL_FIELD = "__hcaStoreDetail"
 
 
 def calculate_payroll_outputs(
@@ -107,6 +108,7 @@ def calculate_payroll_outputs(
         bonus_fixed_amount = parse_number(row.get(bonus_fixed_field))
         final_bonus_cycle_end = final_eligible_bonus_cycle_end(bonus_end_date)
         employee_bonus_accruals = [0.0] * len(periods)
+        store_detail = is_enabled(row.get(STORE_DETAIL_FIELD))
 
         for index, period in enumerate(periods):
             month_end = period["date"]
@@ -153,78 +155,79 @@ def calculate_payroll_outputs(
             employee_bonus_accruals[index] = employee_bonus_accrual
             bonus_accrual_totals[department][index] += employee_bonus_accrual
             period_date = month_end.isoformat()
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["headcount"],
-                fte,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["base_salary_total"],
-                monthly_salary,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["base_salary_domestic"],
-                domestic_salary,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["base_salary_international"],
-                international_salary,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["base_salary_cogs"],
-                cogs_salary,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["medical"],
-                medical,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["retirement_401k"],
-                retirement_401k,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["other_benefits"],
-                other_benefits,
-            )
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period_date,
-                DETAIL_OUTPUT_KEYS["bonus_accrual"],
-                employee_bonus_accrual,
-            )
+            if store_detail:
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["headcount"],
+                    fte,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["base_salary_total"],
+                    monthly_salary,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["base_salary_domestic"],
+                    domestic_salary,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["base_salary_international"],
+                    international_salary,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["base_salary_cogs"],
+                    cogs_salary,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["medical"],
+                    medical,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["retirement_401k"],
+                    retirement_401k,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["other_benefits"],
+                    other_benefits,
+                )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["bonus_accrual"],
+                    employee_bonus_accrual,
+                )
 
         for index, period in enumerate(periods):
             if is_bonus_payout_month(period["date"]):
@@ -235,14 +238,15 @@ def calculate_payroll_outputs(
             else:
                 employee_bonus_payout = 0.0
 
-            append_detail_row(
-                detail_rows,
-                unit_id,
-                department,
-                period["date"].isoformat(),
-                DETAIL_OUTPUT_KEYS["bonus_payout"],
-                employee_bonus_payout,
-            )
+            if store_detail:
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period["date"].isoformat(),
+                    DETAIL_OUTPUT_KEYS["bonus_payout"],
+                    employee_bonus_payout,
+                )
 
     departments = sorted(headcount_totals)
     domestic_departments = sorted(domestic_salary_totals)
@@ -438,6 +442,16 @@ def normalize_text(value: Any) -> str:
 
 def normalize_key(value: Any) -> str:
     return normalize_text(value).lower()
+
+
+def is_enabled(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        return value == 1
+
+    return str(value or "").strip() == "1"
 
 
 def parse_number(value: Any) -> float:

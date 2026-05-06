@@ -6,7 +6,7 @@ Heavy Calc Assist is an Excel Desktop Office.js add-in backed by a FastAPI calc 
 
 The current MVP reads Payroll input data from the workbook, sends included rows to the backend, calculates payroll outputs, and writes the results back to the workbook.
 
-If `DATABASE_URL` is configured on the backend, each Payroll Recalc also stores that user's latest employee/month/output detail rows in Postgres. The task pane `User ID` field supplies the MVP `user_key`.
+If `DATABASE_URL` is configured on the backend, each Payroll Recalc also stores selected latest employee/month/output detail rows in Postgres. The task pane `User ID` field supplies the MVP `user_key`.
 
 It does not yet attempt to replace the full payroll model. Current implemented outputs are:
 
@@ -56,7 +56,7 @@ https://raw.githubusercontent.com/XF1-Advisory-Services/HCA/main/deploy/m365/hca
 The manifest version is currently:
 
 ```text
-1.0.2.0
+1.0.3.0
 ```
 
 If task pane URL, icon URL, display name, permissions, or app metadata changes, bump the manifest version before updating Admin Center.
@@ -145,6 +145,7 @@ payroll.exec_bonus_burn_multiple_weight
 payroll.incentive_bonus_NNAR_weight
 payroll.incentive_bonus_burn_multiple_weight
 payroll.filter_column
+payroll.store_filter_column
 payroll.data_range
 payroll.headers_range
 payroll.output.headcount
@@ -163,8 +164,9 @@ Example range values:
 
 ```text
 payroll.filter_column                   PayrollData!R:R
-payroll.data_range                      PayrollData!B5:R1531
-payroll.headers_range                   PayrollData!B4:R4
+payroll.store_filter_column             PayrollData!S:S
+payroll.data_range                      PayrollData!B5:S1531
+payroll.headers_range                   PayrollData!B4:S4
 payroll.output.headcount                HCA_Output!E4
 payroll.output.base_salary_total        HCA_Output!E17
 payroll.output.base_salary_domestic     HCA_Output!E30
@@ -192,6 +194,7 @@ F  Start Date
 G  Termination Date
 M:Q Annual base salary assumptions by financial year label
 R  Include in LOAD
+S  Store Flag
 ```
 
 In backend zero-based payload field indexes:
@@ -204,7 +207,9 @@ Start Date       4
 Termination Date 5
 ```
 
-The add-in filters rows where the configured filter column equals `1`.
+The add-in filters rows where the configured `payroll.filter_column` equals `1`.
+
+The configured `payroll.store_filter_column` controls employee-level cloud detail storage only. Rows where Store Flag equals `1` are saved to Postgres detail storage. Rows where Store Flag is blank or `0` still contribute to the department-level Excel outputs, but their employee/month detail rows are not saved.
 
 ## Calculation Rules
 
@@ -355,7 +360,15 @@ payroll.output.base_salary_total
 payroll.output.bonus_payout
 ```
 
-On every saved run, the backend deletes the previous run for the same `user_key` and bulk inserts the new detail rows. Zero-value detail rows are filtered out before saving. If `User ID` is blank, `DATABASE_URL` is missing, or the database save fails, Payroll Recalc still returns Excel outputs and reports the detail save status in the response.
+On every saved run, the backend deletes the previous run for the same `user_key` and bulk inserts the new detail rows. Zero-value detail rows are filtered out before saving. The workbook Store Flag also limits which employees produce saved detail rows. If `User ID` is blank, `DATABASE_URL` is missing, or the database save fails, Payroll Recalc still returns Excel outputs and reports the detail save status in the response.
+
+The Excel custom function is:
+
+```excel
+=HCA.LOAD_DETAIL("payroll.output.base_salary_total", C1, B10)
+```
+
+Arguments are output key, any date in the target forecast month, and employee ID. The function normalizes the date to month-end and returns `0` when the selected detail row was not saved.
 
 The response includes timings for calculation, detail save, and total backend time. The task pane logs calculation and detail save timing after each recalc.
 

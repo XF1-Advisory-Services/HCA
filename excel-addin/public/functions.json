@@ -1,0 +1,34 @@
+{
+  "functions": [
+    {
+      "id": "LOAD_DETAIL",
+      "name": "LOAD_DETAIL",
+      "description": "Loads a stored employee-level payroll output value for one output key, month, and unit ID.",
+      "parameters": [
+        {
+          "name": "output_key",
+          "description": "Config output key, for example payroll.output.base_salary_total.",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "period",
+          "description": "Any Excel date in the forecast month.",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "unit_id",
+          "description": "Employee ID from PayrollData.",
+          "type": "string",
+          "dimensionality": "scalar"
+        }
+      ],
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      }
+    }
+  ],
+  "allowCustomDataForDataTypeAny": true
+}

@@ -17,8 +17,9 @@ test("parseConfig reads the named-range config structure by key", () => {
     ["2. Payroll", "Assumption - constant", "payroll.benefits.other.domestic", "Other Benefits - Domestic", 157, "Number"],
     ["2. Payroll", "Assumption - constant", "payroll.benefits.other.international", "Other Benefits - International", 20, "Number"],
     ["2. Payroll", "Input Range", "payroll.filter_column", "Filter column", "PayrollData!R:R", "Reference - Column"],
-    ["2. Payroll", "Input Range", "payroll.data_range", "Input data by Employees", "PayrollData!B5:R1531", "Reference - Cell Range"],
-    ["2. Payroll", "Input Range Header", "payroll.headers_range", "Header for Input data by Employees", "PayrollData!B4:R4", "Reference - Cell Range"],
+    ["2. Payroll", "Input Range", "payroll.store_filter_column", "Store filter column", "PayrollData!S:S", "Reference - Column"],
+    ["2. Payroll", "Input Range", "payroll.data_range", "Input data by Employees", "PayrollData!B5:S1531", "Reference - Cell Range"],
+    ["2. Payroll", "Input Range Header", "payroll.headers_range", "Header for Input data by Employees", "PayrollData!B4:S4", "Reference - Cell Range"],
     ["2. Payroll", "Output Range", "payroll.output.headcount", "Headcount by Departments by Month", "HCA_Output!E4", "Reference - Starting Cell"],
     ["2. Payroll", "Output Range", "payroll.output.base_salary_total", "Base Salary by Departments by Month", "HCA_Output!E17", "Reference - Starting Cell"],
     ["2. Payroll", "Output Range", "payroll.output.base_salary_domestic", "Base Salary Domestic", "HCA_Output!E30", "Reference - Starting Cell"],
@@ -39,9 +40,10 @@ test("parseConfig reads the named-range config structure by key", () => {
   ]);
 
   assert.equal(config.payroll.dataLoadSheet, "PayrollData");
-  assert.equal(config.payroll.cellRange, "B5:R1531");
-  assert.equal(config.payroll.headers, "B4:R4");
+  assert.equal(config.payroll.cellRange, "B5:S1531");
+  assert.equal(config.payroll.headers, "B4:S4");
   assert.equal(config.payroll.filterColumn, "R");
+  assert.equal(config.payroll.storeFilterColumn, "S");
   assert.equal(config.output.sheet, "HCA_Output");
   assert.equal(config.output.headcountStartCell, "E4");
   assert.equal(config.output.otherBenefitsStartCell, "E96");
@@ -68,6 +70,10 @@ test("parseConfig reads the named-range config structure by key", () => {
 
 test("getFilterOffset handles a full column filter reference", () => {
   assert.equal(getFilterOffset("B5:R1531", "R"), 16);
+});
+
+test("getFilterOffset handles the store flag column", () => {
+  assert.equal(getFilterOffset("B5:S1531", "S"), 17);
 });
 
 test("normalizeUserKey keeps a stable lower-case user identifier", () => {

@@ -4,7 +4,7 @@ Windows Desktop Excel Office.js add-in plus a Python FastAPI calc engine.
 
 The current version bulk-loads Payroll input rows from Excel, filters rows where `Include in LOAD` equals `1`, sends them to the backend, and writes payroll outputs back to the workbook.
 
-If Postgres is configured, the backend also stores each user's latest employee/month/output detail rows for future `LOAD_DETAIL` lookups.
+If Postgres is configured, the backend also stores selected latest employee/month/output detail rows for future `HCA.LOAD_DETAIL` lookups.
 
 ## Project Structure
 
@@ -93,6 +93,7 @@ Required model keys:
 Required payroll keys:
 
 - `payroll.filter_column`
+- `payroll.store_filter_column`
 - `payroll.data_range`
 - `payroll.headers_range`
 - `payroll.benefits.medical.domestic`
@@ -127,8 +128,9 @@ model.last_actuals_date                  31-Mar-26
 model.model_end_date                     30-Apr-28
 model.financial_year_end_month           4
 payroll.filter_column                    PayrollData!R:R
-payroll.data_range                       PayrollData!B5:R1531
-payroll.headers_range                    PayrollData!B4:R4
+payroll.store_filter_column              PayrollData!S:S
+payroll.data_range                       PayrollData!B5:S1531
+payroll.headers_range                    PayrollData!B4:S4
 payroll.benefits.medical.domestic        2464
 payroll.benefits.medical.international   2162
 payroll.benefits.401k.domestic           432
@@ -218,6 +220,16 @@ calcs_detail_outputs
 Only the latest run per `User ID` is retained. Each new saved run deletes that user's prior saved run and bulk inserts the new detail rows.
 
 Zero-value detail rows are not saved. Department-level Excel output tables still include zero values where needed.
+
+Detail rows are saved only for employees where the configured `payroll.store_filter_column` equals `1`. This does not affect the department-level calculations written to `HCA_Output`; it only limits what employee-level detail is stored in Postgres.
+
+After a saved recalc, users can load one stored employee/month/output value with:
+
+```excel
+=HCA.LOAD_DETAIL("payroll.output.base_salary_total", C1, B10)
+```
+
+The arguments are output key, any date in the forecast month, and employee ID. If no stored row exists, the function returns `0`.
 
 The backend response includes separate timing fields for calculation and detail save time. The task pane writes those timings to the activity log after each recalc.
 

@@ -136,6 +136,59 @@ def save_latest_run(
     }
 
 
+def load_detail_value(
+    user_key: str | None,
+    output_key: str,
+    period_end_date: str,
+    unit_id: str,
+    database_url: str | None = None,
+) -> dict[str, Any]:
+    clean_user_key = normalize_user_key(user_key)
+    clean_output_key = str(output_key or "").strip()
+    clean_period_end_date = str(period_end_date or "").strip()
+    clean_unit_id = str(unit_id or "").strip()
+
+    if not clean_user_key:
+        return {"status": "skipped", "reason": "missing_user_key", "value": 0}
+
+    database_url = database_url or os.getenv("DATABASE_URL")
+    if not database_url:
+        return {"status": "skipped", "reason": "database_not_configured", "value": 0}
+
+    if psycopg is None:
+        return {
+            "status": "skipped",
+            "reason": "database_driver_not_installed",
+            "value": 0,
+        }
+
+    with psycopg.connect(database_url) as connection:
+        for statement in SCHEMA_SQL:
+            connection.execute(statement)
+        row = connection.execute(
+            """
+            SELECT value
+            FROM calcs_detail_outputs
+            WHERE user_key = %s
+              AND output_key = %s
+              AND period_end_date = %s
+              AND unit_id = %s
+            LIMIT 1
+            """,
+            (
+                clean_user_key,
+                clean_output_key,
+                clean_period_end_date,
+                clean_unit_id,
+            ),
+        ).fetchone()
+
+    if row is None:
+        return {"status": "not_found", "value": 0}
+
+    return {"status": "found", "value": float(row[0])}
+
+
 def nonzero_detail_rows(detail_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [row for row in detail_rows if float(row.get("value") or 0) != 0.0]
 

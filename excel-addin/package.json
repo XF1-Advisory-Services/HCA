@@ -8,7 +8,7 @@
     "dev": "vite --host localhost --port 3000",
     "build": "vite build",
     "preview": "vite preview --host localhost --port 3000",
-    "test": "node --test src/taskpane/config.test.js"
+    "test": "node --test src/taskpane/config.test.js src/functions/load-detail.test.js"
   },
   "dependencies": {
     "@vitejs/plugin-basic-ssl": "^1.1.0",

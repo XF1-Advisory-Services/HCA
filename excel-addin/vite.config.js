@@ -28,6 +28,12 @@ export default defineConfig({
     rollupOptions: {
       input: {
         taskpane: path.resolve(__dirname, "taskpane.html"),
+        functionsPage: path.resolve(__dirname, "functions.html"),
+      },
+      output: {
+        entryFileNames: "assets/[name].js",
+        chunkFileNames: "assets/[name].js",
+        assetFileNames: "assets/[name][extname]",
       },
     },
   },

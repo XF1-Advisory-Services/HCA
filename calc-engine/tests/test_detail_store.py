@@ -1,6 +1,6 @@
 import unittest
 
-from app.detail_store import build_detail_records, nonzero_detail_rows
+from app.detail_store import build_detail_records, load_detail_value, nonzero_detail_rows
 
 
 class DetailStoreTests(unittest.TestCase):
@@ -61,6 +61,24 @@ class DetailStoreTests(unittest.TestCase):
                     "value": 10000,
                 }
             ],
+        )
+
+    def test_load_detail_value_returns_zero_when_database_is_not_configured(self):
+        result = load_detail_value(
+            "user@example.com",
+            "payroll.output.base_salary_total",
+            "2026-05-31",
+            "E1",
+            database_url=None,
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "status": "skipped",
+                "reason": "database_not_configured",
+                "value": 0,
+            },
         )
 
 

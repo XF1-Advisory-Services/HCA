@@ -1,6 +1,12 @@
 import "./taskpane.css";
 import { getConfigNamedRange, getFilterOffset, parseConfig } from "./config.js";
-import { normalizeUserKey } from "./user.js";
+import {
+  BACKEND_URL_STORAGE_KEY,
+  USER_KEY_STORAGE_KEY,
+  normalizeUserKey,
+  readSharedSetting,
+  writeSharedSetting,
+} from "./user.js";
 
 const DEFAULT_BACKEND_URL =
   import.meta.env.VITE_BACKEND_URL || "https://hca-calc-engine.onrender.com";
@@ -25,10 +31,10 @@ const elements = {
   cloudDot: document.querySelector("#cloud-dot"),
 };
 
-Office.onReady((info) => {
+Office.onReady(async (info) => {
   elements.backendUrl.value =
-    localStorage.getItem("xf1.backendUrl") || DEFAULT_BACKEND_URL;
-  elements.userKey.value = localStorage.getItem("xf1.userKey") || "";
+    (await readSharedSetting(BACKEND_URL_STORAGE_KEY)) || DEFAULT_BACKEND_URL;
+  elements.userKey.value = await readSharedSetting(USER_KEY_STORAGE_KEY);
   elements.backendState.textContent = safeHost(elements.backendUrl.value);
   addLog("Task pane ready.");
 
@@ -45,13 +51,13 @@ Office.onReady((info) => {
   });
   elements.backendUrl.addEventListener("change", () => {
     const value = elements.backendUrl.value.trim();
-    localStorage.setItem("xf1.backendUrl", value);
+    writeSharedSetting(BACKEND_URL_STORAGE_KEY, value);
     elements.backendState.textContent = value ? safeHost(value) : "Backend";
     checkBackendHealth();
   });
   elements.userKey.addEventListener("change", () => {
-    localStorage.setItem("xf1.userKey", normalizeUserKey(elements.userKey.value));
     elements.userKey.value = normalizeUserKey(elements.userKey.value);
+    writeSharedSetting(USER_KEY_STORAGE_KEY, elements.userKey.value);
   });
 
   checkBackendHealth();
@@ -125,9 +131,16 @@ async function buildPayrollPayload(startedAt) {
       config.payroll.cellRange,
       config.payroll.filterColumn
     );
+    const storeFilterOffset = getFilterOffset(
+      config.payroll.cellRange,
+      config.payroll.storeFilterColumn
+    );
     const included = rows
       .filter((row) => isIncluded(row[filterOffset]))
-      .map((row) => rowToObject(headers, row));
+      .map((row) => ({
+        ...rowToObject(headers, row),
+        __hcaStoreDetail: isIncluded(row[storeFilterOffset]),
+      }));
 
     const loadTimeMs = Math.round((performance.now() - startedAt) * 10) / 10;
 
@@ -140,6 +153,7 @@ async function buildPayrollPayload(startedAt) {
         headerRange: config.payroll.headers,
         dataRange: config.payroll.cellRange,
         filterColumn: config.payroll.filterColumn,
+        storeFilterColumn: config.payroll.storeFilterColumn,
       },
       output: config.output,
       assumptions: {
@@ -195,8 +209,8 @@ function isIncluded(value) {
 
 async function sendLoadPreview(payload) {
   const baseUrl = elements.backendUrl.value.trim().replace(/\/$/, "");
-  localStorage.setItem("xf1.userKey", normalizeUserKey(payload.userKey));
-  localStorage.setItem("xf1.backendUrl", baseUrl);
+  await writeSharedSetting(USER_KEY_STORAGE_KEY, normalizeUserKey(payload.userKey));
+  await writeSharedSetting(BACKEND_URL_STORAGE_KEY, baseUrl);
   elements.backendState.textContent = safeHost(baseUrl);
 
   const response = await fetch(`${baseUrl}/payroll/load-preview`, {

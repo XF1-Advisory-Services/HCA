@@ -8,6 +8,7 @@ class PayrollSource(BaseModel):
     headerRange: str
     dataRange: str
     filterColumn: str
+    storeFilterColumn: str | None = None
 
 
 class PayrollMetrics(BaseModel):
@@ -41,3 +42,10 @@ class PayrollLoadPreviewRequest(BaseModel):
     metrics: PayrollMetrics
     headers: list[str]
     rows: list[dict[str, Any]]
+
+
+class PayrollLoadDetailRequest(BaseModel):
+    userKey: str | None = None
+    outputKey: str
+    periodEndDate: str
+    unitId: str

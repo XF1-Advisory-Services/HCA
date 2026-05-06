@@ -37,6 +37,7 @@ class PayrollBonusAccrualTests(unittest.TestCase):
         rows = [
             {
                 "EmployeeID": "E1",
+                "__hcaStoreDetail": True,
                 "FS_Category": "OpEx",
                 "Status": "Domestic",
                 "Department": "Sales",
@@ -50,6 +51,7 @@ class PayrollBonusAccrualTests(unittest.TestCase):
             },
             {
                 "EmployeeID": "E2",
+                "__hcaStoreDetail": True,
                 "FS_Category": "OpEx",
                 "Status": "Domestic",
                 "Department": "Sales",
@@ -63,6 +65,7 @@ class PayrollBonusAccrualTests(unittest.TestCase):
             },
             {
                 "EmployeeID": "E3",
+                "__hcaStoreDetail": False,
                 "FS_Category": "OpEx",
                 "Status": "Domestic",
                 "Department": "G&A",
@@ -118,6 +121,14 @@ class PayrollBonusAccrualTests(unittest.TestCase):
                 "value": 1100,
             },
             outputs["detailRows"],
+        )
+        self.assertEqual(
+            [
+                row
+                for row in outputs["detailRows"]
+                if row["unit_id"] == "E3"
+            ],
+            [],
         )
         self.assertIn(
             {

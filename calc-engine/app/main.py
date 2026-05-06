@@ -5,9 +5,9 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.detail_store import save_latest_run
+from app.detail_store import load_detail_value, save_latest_run
 from app.payroll_headcount import calculate_payroll_outputs
-from app.schemas import PayrollLoadPreviewRequest
+from app.schemas import PayrollLoadDetailRequest, PayrollLoadPreviewRequest
 
 
 def _cors_origins() -> list[str]:
@@ -84,6 +84,16 @@ def payroll_load_preview(payload: PayrollLoadPreviewRequest) -> dict[str, Any]:
         "sampleKeys": sample_keys[:10],
         "outputs": outputs,
     }
+
+
+@app.post("/payroll/load-detail")
+def payroll_load_detail(payload: PayrollLoadDetailRequest) -> dict[str, Any]:
+    return load_detail_value(
+        payload.userKey,
+        payload.outputKey,
+        payload.periodEndDate,
+        payload.unitId,
+    )
 
 
 def elapsed_ms(started_at: float) -> float:
