@@ -21,6 +21,16 @@
       }
     },
     {
+      "id": "DIAG_LOAD_DETAIL",
+      "name": "DIAG_LOAD_DETAIL",
+      "description": "Temporary diagnostic function that verifies the Heavy Calc Assist custom-function runtime can call the load-detail endpoint with known-good values.",
+      "parameters": [],
+      "result": {
+        "type": "number",
+        "dimensionality": "scalar"
+      }
+    },
+    {
       "id": "LOAD_DETAIL",
       "name": "LOAD_DETAIL",
       "description": "Loads a stored employee-level payroll output value for one output key, month, and unit ID.",

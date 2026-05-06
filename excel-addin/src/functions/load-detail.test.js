@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildClientLogContext,
   diag,
+  diagLoadDetail,
   getBackendHealthStatus,
   normalizePeriodEndDate,
   parseLoadDetailValue,
@@ -58,4 +59,33 @@ test("getBackendHealthStatus returns -1 when fetch fails", async () => {
   });
 
   assert.equal(status, -1);
+});
+
+test("diagLoadDetail posts known-good lookup values", async () => {
+  const value = await diagLoadDetail(async (url, options) => {
+    assert.equal(url, "https://hca-calc-engine.onrender.com/payroll/load-detail");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers["Content-Type"], "application/json");
+    assert.deepEqual(JSON.parse(options.body), {
+      userKey: "vavrinec@xf1advisory.com",
+      outputKey: "payroll.output.401k",
+      periodEndDate: "2026-04-30",
+      unitId: "EX18",
+    });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "found", value: 432.365 }),
+    };
+  });
+
+  assert.equal(value, 432.365);
+});
+
+test("diagLoadDetail returns -1 when known-good lookup request fails", async () => {
+  const value = await diagLoadDetail(async () => {
+    throw new Error("Failed to fetch");
+  });
+
+  assert.equal(value, -1);
 });

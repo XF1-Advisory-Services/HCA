@@ -86,6 +86,29 @@ export async function diagBackend() {
   return getBackendHealthStatus(baseUrl);
 }
 
+export async function diagLoadDetail(fetchFn = fetch) {
+  try {
+    const response = await fetchFn(`${DEFAULT_BACKEND_URL}/payroll/load-detail`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userKey: "vavrinec@xf1advisory.com",
+        outputKey: "payroll.output.401k",
+        periodEndDate: "2026-04-30",
+        unitId: "EX18",
+      }),
+    });
+    if (!response.ok) {
+      return -Number(response.status || 1);
+    }
+    return parseLoadDetailValue(await response.json());
+  } catch {
+    return -1;
+  }
+}
+
 export async function getBackendHealthStatus(baseUrl, fetchFn = fetch) {
   try {
     const response = await fetchFn(`${baseUrl.replace(/\/$/, "")}/health`);
@@ -209,4 +232,5 @@ if (globalThis.CustomFunctions?.associate) {
   globalThis.CustomFunctions.associate("LOAD_DETAIL", loadDetail);
   globalThis.CustomFunctions.associate("DIAG", diag);
   globalThis.CustomFunctions.associate("DIAG_BACKEND", diagBackend);
+  globalThis.CustomFunctions.associate("DIAG_LOAD_DETAIL", diagLoadDetail);
 }

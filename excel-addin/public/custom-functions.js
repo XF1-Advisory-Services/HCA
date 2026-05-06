@@ -82,6 +82,30 @@
     return getBackendHealthStatus(baseUrl);
   }
 
+  async function diagLoadDetail() {
+    try {
+      const response = await fetch(`${defaultBackendUrl}/payroll/load-detail`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userKey: "vavrinec@xf1advisory.com",
+          outputKey: "payroll.output.401k",
+          periodEndDate: "2026-04-30",
+          unitId: "EX18",
+        }),
+      });
+      if (!response.ok) {
+        return -Number(response.status || 1);
+      }
+      const body = await response.json();
+      return Number(body && body.value ? body.value : 0);
+    } catch {
+      return -1;
+    }
+  }
+
   async function getBackendHealthStatus(baseUrl, fetchFn) {
     try {
       const response = await (fetchFn || fetch)(`${baseUrl.replace(/\/$/, "")}/health`);
@@ -216,5 +240,6 @@
     root.CustomFunctions.associate("LOAD_DETAIL", loadDetail);
     root.CustomFunctions.associate("DIAG", diag);
     root.CustomFunctions.associate("DIAG_BACKEND", diagBackend);
+    root.CustomFunctions.associate("DIAG_LOAD_DETAIL", diagLoadDetail);
   }
 })();
