@@ -76,6 +76,13 @@ test("getFilterOffset handles the store flag column", () => {
   assert.equal(getFilterOffset("B5:S1531", "S"), 17);
 });
 
+test("getFilterOffset rejects a column outside the configured data range", () => {
+  assert.throws(
+    () => getFilterOffset("B5:R1531", "S"),
+    /Expand payroll\.data_range and payroll\.headers_range/
+  );
+});
+
 test("normalizeUserKey keeps a stable lower-case user identifier", () => {
   assert.equal(
     normalizeUserKey(" Vavrinec@XF1Advisory.com "),

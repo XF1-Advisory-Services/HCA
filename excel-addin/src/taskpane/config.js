@@ -249,10 +249,17 @@ export function getFilterOffset(rangeAddress, filterColumn) {
   const startIndex = columnToNumber(startColumn);
   const filterIndex = columnToNumber(filterColumn);
   const offset = filterIndex - startIndex;
+  const columnCount = getRangeColumnCount(rangeAddress);
 
   if (offset < 0) {
     throw new Error(
       `Filter column ${filterColumn} is outside data range ${rangeAddress}.`
+    );
+  }
+
+  if (offset >= columnCount) {
+    throw new Error(
+      `Filter column ${filterColumn} is outside data range ${rangeAddress}. Expand payroll.data_range and payroll.headers_range to include that column.`
     );
   }
 
@@ -270,6 +277,14 @@ export function isSelectedFlag(value) {
 
   const text = String(value ?? "").trim().toLowerCase();
   return text === "1" || text === "true" || text === "yes";
+}
+
+function getRangeColumnCount(rangeAddress) {
+  const cleaned = String(rangeAddress).split("!").pop().replace(/\$/g, "");
+  const [startAddress, endAddress = startAddress] = cleaned.split(":");
+  const startColumn = extractStartColumn(startAddress);
+  const endColumn = extractStartColumn(endAddress);
+  return columnToNumber(endColumn) - columnToNumber(startColumn) + 1;
 }
 
 function extractStartColumn(rangeAddress) {
