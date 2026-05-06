@@ -104,6 +104,16 @@ def payroll_load_detail(payload: PayrollLoadDetailRequest) -> dict[str, Any]:
     )
 
 
+@app.get("/payroll/load-detail")
+def payroll_load_detail_get(
+    userKey: str | None,
+    outputKey: str,
+    periodEndDate: str,
+    unitId: str,
+) -> dict[str, Any]:
+    return load_detail_value(userKey, outputKey, periodEndDate, unitId)
+
+
 @app.post("/debug/client-log")
 def debug_client_log(payload: ClientLogRequest) -> dict[str, str]:
     logger.warning(

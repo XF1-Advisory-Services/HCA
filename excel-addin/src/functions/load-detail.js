@@ -42,13 +42,7 @@ export async function loadDetail(outputKey, period, unitId, userKeyOverride = ""
     context.unitId = requestBody.unitId;
 
     stage = "backend-fetch";
-    const response = await fetch(`${baseUrl.replace(/\/$/, "")}/payroll/load-detail`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    const response = await fetch(buildLoadDetailUrl(baseUrl, requestBody));
 
     context.responseStatus = response.status;
     if (!response.ok) {
@@ -88,18 +82,14 @@ export async function diagBackend() {
 
 export async function diagLoadDetail(fetchFn = fetch) {
   try {
-    const response = await fetchFn(`${DEFAULT_BACKEND_URL}/payroll/load-detail`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    const response = await fetchFn(
+      buildLoadDetailUrl(DEFAULT_BACKEND_URL, {
         userKey: "vavrinec@xf1advisory.com",
         outputKey: "payroll.output.401k",
         periodEndDate: "2026-04-30",
         unitId: "EX18",
-      }),
-    });
+      })
+    );
     if (!response.ok) {
       return -Number(response.status || 1);
     }
@@ -107,6 +97,16 @@ export async function diagLoadDetail(fetchFn = fetch) {
   } catch {
     return -1;
   }
+}
+
+export function buildLoadDetailUrl(baseUrl, requestBody) {
+  const params = new URLSearchParams({
+    userKey: requestBody.userKey,
+    outputKey: requestBody.outputKey,
+    periodEndDate: requestBody.periodEndDate,
+    unitId: requestBody.unitId,
+  });
+  return `${baseUrl.replace(/\/$/, "")}/payroll/load-detail?${params.toString()}`;
 }
 
 export async function getBackendHealthStatus(baseUrl, fetchFn = fetch) {

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildClientLogContext,
+  buildLoadDetailUrl,
   diag,
   diagLoadDetail,
   getBackendHealthStatus,
@@ -63,15 +64,11 @@ test("getBackendHealthStatus returns -1 when fetch fails", async () => {
 
 test("diagLoadDetail posts known-good lookup values", async () => {
   const value = await diagLoadDetail(async (url, options) => {
-    assert.equal(url, "https://hca-calc-engine.onrender.com/payroll/load-detail");
-    assert.equal(options.method, "POST");
-    assert.equal(options.headers["Content-Type"], "application/json");
-    assert.deepEqual(JSON.parse(options.body), {
-      userKey: "vavrinec@xf1advisory.com",
-      outputKey: "payroll.output.401k",
-      periodEndDate: "2026-04-30",
-      unitId: "EX18",
-    });
+    assert.equal(
+      url,
+      "https://hca-calc-engine.onrender.com/payroll/load-detail?userKey=vavrinec%40xf1advisory.com&outputKey=payroll.output.401k&periodEndDate=2026-04-30&unitId=EX18"
+    );
+    assert.equal(options, undefined);
     return {
       ok: true,
       status: 200,
@@ -88,4 +85,16 @@ test("diagLoadDetail returns -1 when known-good lookup request fails", async () 
   });
 
   assert.equal(value, -1);
+});
+
+test("buildLoadDetailUrl encodes query parameters", () => {
+  assert.equal(
+    buildLoadDetailUrl("https://example.test/", {
+      userKey: "user@example.com",
+      outputKey: "payroll.output.base_salary_total",
+      periodEndDate: "2026-05-31",
+      unitId: "EX 18",
+    }),
+    "https://example.test/payroll/load-detail?userKey=user%40example.com&outputKey=payroll.output.base_salary_total&periodEndDate=2026-05-31&unitId=EX+18"
+  );
 });

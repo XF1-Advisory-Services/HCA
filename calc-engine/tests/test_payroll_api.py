@@ -2,7 +2,12 @@ import os
 import unittest
 
 try:
-    from app.main import debug_client_log, payroll_load_detail, payroll_load_preview
+    from app.main import (
+        debug_client_log,
+        payroll_load_detail,
+        payroll_load_detail_get,
+        payroll_load_preview,
+    )
     from app.schemas import (
         ClientLogRequest,
         PayrollLoadDetailRequest,
@@ -11,6 +16,7 @@ try:
 except ModuleNotFoundError:
     debug_client_log = None
     payroll_load_detail = None
+    payroll_load_detail_get = None
     payroll_load_preview = None
     ClientLogRequest = None
     PayrollLoadDetailRequest = None
@@ -108,6 +114,24 @@ class PayrollApiTests(unittest.TestCase):
                     "unitId": "E1",
                 }
             )
+        )
+
+        self.assertEqual(response["status"], "skipped")
+        self.assertEqual(response["reason"], "database_not_configured")
+        self.assertEqual(response["value"], 0)
+
+    def test_load_detail_get_returns_zero_when_database_is_not_configured(self):
+        if payroll_load_detail_get is None:
+            self.skipTest("FastAPI test dependency is not installed.")
+
+        previous_database_url = os.environ.pop("DATABASE_URL", None)
+        self.addCleanup(self._restore_database_url, previous_database_url)
+
+        response = payroll_load_detail_get(
+            userKey="user@example.com",
+            outputKey="payroll.output.base_salary_total",
+            periodEndDate="2026-05-31",
+            unitId="E1",
         )
 
         self.assertEqual(response["status"], "skipped")
