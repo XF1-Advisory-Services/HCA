@@ -319,6 +319,9 @@ async function writePayrollOutputs(outputConfig, outputs) {
   if (!outputs?.bonusPayout?.table?.length) {
     throw new Error("Backend did not return a bonus payout output table.");
   }
+  if (!outputs?.severance?.table?.length) {
+    throw new Error("Backend did not return a severance output table.");
+  }
 
   await Excel.run(async (context) => {
     const outputSheet = context.workbook.worksheets.getItem(outputConfig.sheet);
@@ -380,6 +383,12 @@ async function writePayrollOutputs(outputConfig, outputs) {
       outputSheet,
       outputConfig.bonusPayoutStartCell,
       outputs.bonusPayout.table,
+      "#,##0"
+    );
+    writeOutputTable(
+      outputSheet,
+      outputConfig.severanceStartCell,
+      outputs.severance.table,
       "#,##0"
     );
 

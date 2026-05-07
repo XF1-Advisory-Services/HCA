@@ -15,6 +15,7 @@ STATUS_FIELD_INDEX = 2
 BONUS_PLAN_FIELD_INDEX = 6
 BONUS_PERCENT_FIELD_INDEX = 7
 BONUS_FIXED_FIELD_INDEX = 8
+SEVERANCE_PAY_FIELD_INDEX = 10
 FAR_FUTURE_DATE = date(2099, 12, 31)
 BONUS_PAYOUT_MONTHS = {2, 5, 8, 11}
 DETAIL_OUTPUT_KEYS = {
@@ -28,6 +29,7 @@ DETAIL_OUTPUT_KEYS = {
     "other_benefits": "payroll.output.other_benefits",
     "bonus_accrual": "payroll.output.bonus_accrual",
     "bonus_payout": "payroll.output.bonus_payout",
+    "severance": "payroll.output.severance",
 }
 STORE_DETAIL_FIELD = "__hcaStoreDetail"
 
@@ -47,6 +49,9 @@ def calculate_payroll_outputs(
     bonus_plan_field = field_name(headers, BONUS_PLAN_FIELD_INDEX, "bonus plan")
     bonus_percent_field = field_name(headers, BONUS_PERCENT_FIELD_INDEX, "bonus percent")
     bonus_fixed_field = field_name(headers, BONUS_FIXED_FIELD_INDEX, "bonus fixed amount")
+    severance_pay_field = field_name(
+        headers, SEVERANCE_PAY_FIELD_INDEX, "severance pay"
+    )
     periods = [
         {
             "date": parse_iso_date(period.date),
@@ -86,6 +91,9 @@ def calculate_payroll_outputs(
     bonus_payout_totals: dict[str, list[float]] = defaultdict(
         lambda: [0.0] * len(periods)
     )
+    severance_totals: dict[str, list[float]] = defaultdict(
+        lambda: [0.0] * len(periods)
+    )
     detail_rows: list[dict[str, Any]] = []
     skipped_rows = 0
 
@@ -106,6 +114,7 @@ def calculate_payroll_outputs(
         bonus_plan = normalize_key(row.get(bonus_plan_field))
         bonus_percent = parse_number(row.get(bonus_percent_field))
         bonus_fixed_amount = parse_number(row.get(bonus_fixed_field))
+        severance_pay = parse_number(row.get(severance_pay_field))
         final_bonus_cycle_end = final_eligible_bonus_cycle_end(bonus_end_date)
         employee_bonus_accruals = [0.0] * len(periods)
         store_detail = is_enabled(row.get(STORE_DETAIL_FIELD))
@@ -154,6 +163,12 @@ def calculate_payroll_outputs(
             )
             employee_bonus_accruals[index] = employee_bonus_accrual
             bonus_accrual_totals[department][index] += employee_bonus_accrual
+            severance = (
+                severance_pay
+                if is_within_month(raw_end_date, month_start, month_end)
+                else 0.0
+            )
+            severance_totals[department][index] += severance
             period_date = month_end.isoformat()
             if store_detail:
                 append_detail_row(
@@ -228,6 +243,14 @@ def calculate_payroll_outputs(
                     DETAIL_OUTPUT_KEYS["bonus_accrual"],
                     employee_bonus_accrual,
                 )
+                append_detail_row(
+                    detail_rows,
+                    unit_id,
+                    department,
+                    period_date,
+                    DETAIL_OUTPUT_KEYS["severance"],
+                    severance,
+                )
 
         for index, period in enumerate(periods):
             if is_bonus_payout_month(period["date"]):
@@ -257,6 +280,7 @@ def calculate_payroll_outputs(
     other_benefits_departments = sorted(other_benefits_totals)
     bonus_accrual_departments = sorted(bonus_accrual_totals)
     bonus_payout_departments = sorted(bonus_payout_totals)
+    severance_departments = sorted(severance_totals)
 
     return {
         "headcount": {
@@ -351,6 +375,16 @@ def calculate_payroll_outputs(
             "departments": bonus_payout_departments,
             "periods": serialize_periods(periods),
         },
+        "severance": {
+            "table": output_table(
+                severance_departments,
+                periods,
+                severance_totals,
+                decimals=0,
+            ),
+            "departments": severance_departments,
+            "periods": serialize_periods(periods),
+        },
         "detailRows": detail_rows,
     }
 
@@ -389,6 +423,10 @@ def monthly_fte(
     active_days = (active_end - active_start).days + 1
     days_in_month = monthrange(month_end.year, month_end.month)[1]
     return active_days / days_in_month
+
+
+def is_within_month(value: date | None, month_start: date, month_end: date) -> bool:
+    return value is not None and month_start <= value <= month_end
 
 
 def salary_field_by_period(

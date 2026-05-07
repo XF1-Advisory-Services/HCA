@@ -212,6 +212,10 @@ function buildOutputConfig(settings) {
       requiredSetting(settings, "payroll.output.bonus_payout"),
       "payroll.output.bonus_payout"
     ),
+    severanceStartCell: parseSheetReference(
+      requiredSetting(settings, "payroll.output.severance"),
+      "payroll.output.severance"
+    ),
   };
   const sheet = references.headcountStartCell.sheet;
 

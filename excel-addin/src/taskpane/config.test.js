@@ -33,6 +33,7 @@ test("parseConfig reads the named-range config structure by key", () => {
     ["2. Payroll", "Assumption - constant", "payroll.bonus_cap", "Bonus Cap", 2, "Number"],
     ["2. Payroll", "Output Range", "payroll.output.bonus_accrual", "Bonus Accrual by Department by Month", "HCA_Output!E110", "Reference - Starting Cell"],
     ["2. Payroll", "Output Range", "payroll.output.bonus_payout", "Bonus Payout by Department by Month", "HCA_Output!E124", "Reference - Starting Cell"],
+    ["2. Payroll", "Output Range", "payroll.output.severance", "Severance Payout by Department by Month", "HCA_Output!E136", "Reference - Starting Cell"],
     ["2. Payroll", "Assumption - constant", "payroll.exec_bonus_NNAR_weight", "Net New ARR weight - Executive Bonus Plan", 0.75, "Number"],
     ["2. Payroll", "Assumption - constant", "payroll.exec_bonus_burn_multiple_weight", "Burn Multiple Plan - Executive Bonus Plan", 0.25, "Number"],
     ["2. Payroll", "Assumption - constant", "payroll.incentive_bonus_NNAR_weight", "Net New ARR weight - Halcyon Incentive Bonus", 1, "Number"],
@@ -49,6 +50,7 @@ test("parseConfig reads the named-range config structure by key", () => {
   assert.equal(config.output.otherBenefitsStartCell, "E96");
   assert.equal(config.output.bonusAccrualStartCell, "E110");
   assert.equal(config.output.bonusPayoutStartCell, "E124");
+  assert.equal(config.output.severanceStartCell, "E136");
   assert.equal(config.assumptions.benefits.otherBenefits.international, 20);
   assert.equal(config.assumptions.bonus.cap, 2);
   assert.equal(config.assumptions.bonus.executivePlan.netNewArrWeight, 0.75);
