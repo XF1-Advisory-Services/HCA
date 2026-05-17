@@ -4,11 +4,14 @@ import test from "node:test";
 import {
   buildClientLogContext,
   buildLoadDetailUrl,
+  buildLoadDetailLookupKey,
   diag,
   diagLoadDetail,
   getBackendHealthStatus,
+  loadDetail,
   normalizePeriodEndDate,
   parseLoadDetailValue,
+  queueLoadDetailLookup,
 } from "./load-detail.js";
 
 test("normalizePeriodEndDate accepts an Excel date serial", () => {
@@ -97,4 +100,249 @@ test("buildLoadDetailUrl encodes query parameters", () => {
     }),
     "https://example.test/payroll/load-detail?userKey=user%40example.com&outputKey=payroll.output.base_salary_total&periodEndDate=2026-05-31&unitId=EX+18"
   );
+});
+
+test("buildLoadDetailLookupKey normalizes lookup fields", () => {
+  assert.equal(
+    buildLoadDetailLookupKey(" User@Example.COM ", {
+      outputKey: " payroll.output.401k ",
+      periodEndDate: " 2026-05-31 ",
+      unitId: " E1 ",
+    }),
+    "user@example.com\u001fpayroll.output.401k\u001f2026-05-31\u001fE1"
+  );
+});
+
+test("queueLoadDetailLookup batches 1000 lookups into 2 requests", async () => {
+  const requests = [];
+  const timers = [];
+
+  async function fetchFn(url, options) {
+    const body = JSON.parse(options.body);
+    requests.push({ url, body });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "ok",
+        values: body.items.map((_, index) => index + 1),
+        foundCount: body.items.length,
+      }),
+    };
+  }
+
+  const promises = [];
+  for (let index = 0; index < 1000; index += 1) {
+    promises.push(
+      queueLoadDetailLookup(
+        "https://example.test",
+        "user@example.com",
+        {
+          outputKey: "payroll.output.base_salary_total",
+          periodEndDate: "2026-05-31",
+          unitId: `E${index}`,
+        },
+        {
+          fetchFn,
+          maxBatchSize: 500,
+          setTimeoutFn: (callback) => {
+            timers.push(callback);
+            return timers.length;
+          },
+        }
+      )
+    );
+  }
+
+  assert.equal(timers.length, 1);
+  timers[0]();
+  const values = await Promise.all(promises);
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch");
+  assert.equal(requests[0].body.items.length, 500);
+  assert.equal(requests[1].body.items.length, 500);
+  assert.equal(values.length, 1000);
+  assert.equal(values[0], 1);
+  assert.equal(values[499], 500);
+  assert.equal(values[500], 1);
+  assert.equal(values[999], 500);
+});
+
+test("queueLoadDetailLookup dedupes identical lookups in one pending batch", async () => {
+  const requests = [];
+  const timers = [];
+
+  async function fetchFn(url, options) {
+    const body = JSON.parse(options.body);
+    requests.push({ url, body });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", values: [432], foundCount: 1 }),
+    };
+  }
+
+  const promises = [];
+  for (let index = 0; index < 10; index += 1) {
+    promises.push(
+      queueLoadDetailLookup(
+        "https://example.test",
+        "user@example.com",
+        {
+          outputKey: "payroll.output.401k",
+          periodEndDate: "2026-05-31",
+          unitId: "E1",
+        },
+        {
+          fetchFn,
+          setTimeoutFn: (callback) => {
+            timers.push(callback);
+            return timers.length;
+          },
+        }
+      )
+    );
+  }
+
+  timers[0]();
+  const values = await Promise.all(promises);
+
+  assert.deepEqual(values, Array(10).fill(432));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].body.items.length, 1);
+});
+
+test("queueLoadDetailLookup keeps different backend URLs in separate batches", async () => {
+  const requests = [];
+  const timers = [];
+
+  async function fetchFn(url, options) {
+    const body = JSON.parse(options.body);
+    requests.push({ url, body });
+    const value = url.includes("first.example.test") ? 1 : 2;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", values: [value], foundCount: 1 }),
+    };
+  }
+
+  const options = {
+    fetchFn,
+    setTimeoutFn: (callback) => {
+      timers.push(callback);
+      return timers.length;
+    },
+  };
+
+  const first = queueLoadDetailLookup(
+    "https://first.example.test",
+    "user@example.com",
+    {
+      outputKey: "payroll.output.401k",
+      periodEndDate: "2026-05-31",
+      unitId: "E1",
+    },
+    options
+  );
+  const second = queueLoadDetailLookup(
+    "https://second.example.test",
+    "user@example.com",
+    {
+      outputKey: "payroll.output.401k",
+      periodEndDate: "2026-05-31",
+      unitId: "E1",
+    },
+    options
+  );
+
+  assert.equal(timers.length, 2);
+  timers.forEach((callback) => callback());
+
+  assert.deepEqual(await Promise.all([first, second]), [1, 2]);
+  assert.equal(requests.length, 2);
+  assert.equal(
+    requests[0].url,
+    "https://first.example.test/payroll/load-detail-batch"
+  );
+  assert.equal(
+    requests[1].url,
+    "https://second.example.test/payroll/load-detail-batch"
+  );
+});
+
+test("queueLoadDetailLookup rejects when response length does not match", async () => {
+  const timers = [];
+  const promise = queueLoadDetailLookup(
+    "https://example.test",
+    "user@example.com",
+    {
+      outputKey: "payroll.output.401k",
+      periodEndDate: "2026-05-31",
+      unitId: "E1",
+    },
+    {
+      fetchFn: async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: "ok", values: [], foundCount: 0 }),
+      }),
+      setTimeoutFn: (callback) => {
+        timers.push(callback);
+        return timers.length;
+      },
+    }
+  );
+
+  timers[0]();
+
+  await assert.rejects(
+    promise,
+    /LOAD_DETAIL batch returned 0 values for 1 lookups/
+  );
+});
+
+test("loadDetail uses optional user key override for batch request", async () => {
+  const requests = [];
+  const previousFetch = globalThis.fetch;
+  const previousLocalStorage = globalThis.localStorage;
+
+  globalThis.localStorage = {
+    getItem: (key) => (key === "xf1.backendUrl" ? "https://example.test" : ""),
+    setItem: () => {},
+  };
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ url, body });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "ok", values: [99], foundCount: 1 }),
+    };
+  };
+
+  try {
+    const value = await loadDetail(
+      "payroll.output.401k",
+      "2026-05-15",
+      "E1",
+      "override@example.com"
+    );
+
+    assert.equal(value, 99);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch");
+    assert.equal(requests[0].body.userKey, "override@example.com");
+    assert.deepEqual(requests[0].body.items, [
+      {
+        outputKey: "payroll.output.401k",
+        periodEndDate: "2026-05-31",
+        unitId: "E1",
+      },
+    ]);
+  } finally {
+    globalThis.fetch = previousFetch;
+    globalThis.localStorage = previousLocalStorage;
+  }
 });

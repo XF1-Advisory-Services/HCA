@@ -7,6 +7,17 @@ import {
 
 const DEFAULT_BACKEND_URL =
   import.meta.env?.VITE_BACKEND_URL || "https://hca-calc-engine.onrender.com";
+const LOAD_DETAIL_BATCH_DELAY_MS = 50;
+const LOAD_DETAIL_BATCH_MAX_SIZE = 500;
+const SETTINGS_CACHE_TTL_MS = 1000;
+const LOOKUP_KEY_DELIMITER = "\u001f";
+
+let settingsCache = {
+  expiresAt: 0,
+  promise: null,
+};
+const batchGroups = new Map();
+const pendingByLookupKey = new Map();
 
 export async function loadDetail(outputKey, period, unitId, userKeyOverride = "") {
   let stage = "start";
@@ -14,10 +25,9 @@ export async function loadDetail(outputKey, period, unitId, userKeyOverride = ""
   const context = buildClientLogContext(outputKey, period, unitId, userKeyOverride);
 
   try {
-    stage = "read-user-key";
-    const userKey = normalizeUserKey(
-      userKeyOverride || (await readSharedSetting(USER_KEY_STORAGE_KEY))
-    );
+    stage = "read-settings";
+    const settings = await readLoadDetailSettings();
+    const userKey = normalizeUserKey(userKeyOverride || settings.userKey);
     context.userKey = userKey;
     if (!userKey) {
       const message =
@@ -27,7 +37,7 @@ export async function loadDetail(outputKey, period, unitId, userKeyOverride = ""
     }
 
     stage = "read-backend-url";
-    baseUrl = (await readSharedSetting(BACKEND_URL_STORAGE_KEY)) || DEFAULT_BACKEND_URL;
+    baseUrl = settings.backendUrl || DEFAULT_BACKEND_URL;
     context.backendUrl = baseUrl;
 
     stage = "normalize-period";
@@ -41,26 +51,12 @@ export async function loadDetail(outputKey, period, unitId, userKeyOverride = ""
     context.periodEndDate = requestBody.periodEndDate;
     context.unitId = requestBody.unitId;
 
-    stage = "backend-fetch";
-    const response = await fetch(buildLoadDetailUrl(baseUrl, requestBody));
-
-    context.responseStatus = response.status;
-    if (!response.ok) {
-      const responseText = await readResponseText(response);
-      await reportClientError(
-        baseUrl,
-        "backend-response",
-        `LOAD_DETAIL backend error: ${response.status}`,
-        { ...context, responseText }
-      );
-      return customFunctionError(`LOAD_DETAIL backend error: ${response.status}`);
-    }
-
-    stage = "backend-json";
-    const responseBody = await response.json();
-
-    stage = "parse-value";
-    return parseLoadDetailValue(responseBody);
+    stage = "backend-batch";
+    return await queueLoadDetailLookup(baseUrl, userKey, {
+      outputKey: requestBody.outputKey,
+      periodEndDate: requestBody.periodEndDate,
+      unitId: requestBody.unitId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await reportClientError(baseUrl, stage, message, context);
@@ -109,6 +105,70 @@ export function buildLoadDetailUrl(baseUrl, requestBody) {
   return `${baseUrl.replace(/\/$/, "")}/payroll/load-detail?${params.toString()}`;
 }
 
+export function buildLoadDetailLookupKey(userKey, item) {
+  return [
+    normalizeUserKey(userKey),
+    String(item.outputKey ?? "").trim(),
+    String(item.periodEndDate ?? "").trim(),
+    String(item.unitId ?? "").trim(),
+  ].join(LOOKUP_KEY_DELIMITER);
+}
+
+export function queueLoadDetailLookup(baseUrl, userKey, item, options = {}) {
+  const cleanBaseUrl = normalizeBaseUrl(baseUrl || DEFAULT_BACKEND_URL);
+  const cleanUserKey = normalizeUserKey(userKey);
+  const groupKey = buildLoadDetailGroupKey(cleanBaseUrl, cleanUserKey);
+  const itemLookupKey = buildLoadDetailLookupKey(cleanUserKey, item);
+  const pendingKey = `${groupKey}${LOOKUP_KEY_DELIMITER}${itemLookupKey}`;
+
+  if (pendingByLookupKey.has(pendingKey)) {
+    return pendingByLookupKey.get(pendingKey).promise;
+  }
+
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+
+  pendingByLookupKey.set(pendingKey, { promise });
+
+  let group = batchGroups.get(groupKey);
+  if (!group) {
+    group = {
+      baseUrl: cleanBaseUrl,
+      userKey: cleanUserKey,
+      items: [],
+      timerId: null,
+      options,
+    };
+    batchGroups.set(groupKey, group);
+  }
+
+  group.items.push({
+    lookupKey: pendingKey,
+    item: {
+      outputKey: String(item.outputKey ?? "").trim(),
+      periodEndDate: String(item.periodEndDate ?? "").trim(),
+      unitId: String(item.unitId ?? "").trim(),
+    },
+    resolve,
+    reject,
+  });
+
+  const delayMs = options.delayMs ?? LOAD_DETAIL_BATCH_DELAY_MS;
+  const setTimer = options.setTimeoutFn ?? setTimeout;
+
+  if (!group.timerId) {
+    group.timerId = setTimer(() => {
+      flushLoadDetailGroup(groupKey);
+    }, delayMs);
+  }
+
+  return promise;
+}
+
 export async function getBackendHealthStatus(baseUrl, fetchFn = fetch) {
   try {
     const response = await fetchFn(`${baseUrl.replace(/\/$/, "")}/health`);
@@ -127,6 +187,106 @@ export function normalizePeriodEndDate(value) {
 
 export function parseLoadDetailValue(responseBody) {
   return Number(responseBody?.value || 0);
+}
+
+async function readLoadDetailSettings() {
+  const now = Date.now();
+  if (settingsCache.promise && settingsCache.expiresAt > now) {
+    return settingsCache.promise;
+  }
+
+  settingsCache.promise = Promise.all([
+    readSharedSetting(USER_KEY_STORAGE_KEY),
+    readSharedSetting(BACKEND_URL_STORAGE_KEY),
+  ]).then(([userKey, backendUrl]) => ({
+    userKey: normalizeUserKey(userKey),
+    backendUrl: backendUrl || DEFAULT_BACKEND_URL,
+  }));
+
+  settingsCache.expiresAt = now + SETTINGS_CACHE_TTL_MS;
+  return settingsCache.promise;
+}
+
+async function flushLoadDetailGroup(groupKey) {
+  const group = batchGroups.get(groupKey);
+  if (!group) {
+    return;
+  }
+
+  batchGroups.delete(groupKey);
+  group.timerId = null;
+
+  const maxBatchSize = group.options?.maxBatchSize ?? LOAD_DETAIL_BATCH_MAX_SIZE;
+  const chunks = chunkArray(group.items, maxBatchSize);
+
+  await Promise.all(
+    chunks.map((chunk) =>
+      sendLoadDetailBatch(group.baseUrl, group.userKey, chunk, group.options)
+    )
+  );
+}
+
+function chunkArray(values, size) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function sendLoadDetailBatch(baseUrl, userKey, queuedItems, options = {}) {
+  const fetchFn = options.fetchFn ?? fetch;
+
+  try {
+    const response = await fetchFn(`${baseUrl}/payroll/load-detail-batch`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        userKey,
+        items: queuedItems.map(({ item }) => ({
+          outputKey: item.outputKey,
+          periodEndDate: item.periodEndDate,
+          unitId: item.unitId,
+        })),
+      }),
+    });
+
+    if (!response.ok) {
+      const responseText = await readResponseText(response);
+      throw new Error(
+        `LOAD_DETAIL batch backend error: ${response.status} ${responseText}`
+      );
+    }
+
+    const body = await response.json();
+    const values = Array.isArray(body?.values) ? body.values : [];
+
+    if (values.length !== queuedItems.length) {
+      throw new Error(
+        `LOAD_DETAIL batch returned ${values.length} values for ${queuedItems.length} lookups.`
+      );
+    }
+
+    queuedItems.forEach((queuedItem, index) => {
+      pendingByLookupKey.delete(queuedItem.lookupKey);
+      queuedItem.resolve(Number(values[index] || 0));
+    });
+  } catch (error) {
+    queuedItems.forEach((queuedItem) => {
+      pendingByLookupKey.delete(queuedItem.lookupKey);
+      queuedItem.reject(error);
+    });
+  }
+}
+
+function buildLoadDetailGroupKey(baseUrl, userKey) {
+  return `${baseUrl}${LOOKUP_KEY_DELIMITER}${userKey}`;
+}
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || DEFAULT_BACKEND_URL).trim().replace(/\/$/, "");
 }
 
 export function buildClientLogContext(outputKey, period, unitId, userKeyOverride = "") {
