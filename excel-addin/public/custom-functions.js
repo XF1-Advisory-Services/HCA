@@ -205,26 +205,23 @@ var HcaCustomFunctionsBundle = (() => {
       `officeStorage=${storage ? "available" : "missing"}`
     ].join(";");
   }
-  async function postCheck(baseUrl = "", options = {}) {
-    const fetchFn = options.fetchFn ?? fetch;
+  var POST_CHECK_MODES = /* @__PURE__ */ new Set(["json", "text", "empty", "form"]);
+  async function postCheck(modeOrBaseUrl = "json", baseUrlOrOptions = "", options = {}) {
+    const { mode, baseUrl, resolvedOptions } = resolvePostCheckArgs(
+      modeOrBaseUrl,
+      baseUrlOrOptions,
+      options
+    );
+    const fetchFn = resolvedOptions.fetchFn ?? fetch;
     const cleanBaseUrl = normalizeBaseUrl(baseUrl);
     try {
-      const response = await fetchFn(`${cleanBaseUrl}/debug/client-log`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          source: "HCA.POST_CHECK",
-          stage: "post-check",
-          level: "info",
-          message: "Custom function POST probe.",
-          context: { runtimeId }
-        })
-      });
-      return `post=${Number(response.status || 0)}`;
+      const response = await fetchFn(
+        `${cleanBaseUrl}/debug/client-log`,
+        buildPostCheckRequest(mode)
+      );
+      return `mode=${mode};post=${Number(response.status || 0)}`;
     } catch (error) {
-      return `post=error;message=${truncate(String(error?.message || error))}`;
+      return `mode=${mode};post=error;message=${truncate(String(error?.message || error))}`;
     }
   }
   function batchQueueCheck(token = "default", delayMs = 100, options = {}) {
@@ -286,6 +283,61 @@ var HcaCustomFunctionsBundle = (() => {
   }
   function normalizeBaseUrl(baseUrl) {
     return String(baseUrl || DEFAULT_BACKEND_URL2).trim().replace(/\/$/, "");
+  }
+  function resolvePostCheckArgs(modeOrBaseUrl, baseUrlOrOptions, options) {
+    const first = String(modeOrBaseUrl || "json").trim();
+    const firstLower = first.toLowerCase();
+    if (POST_CHECK_MODES.has(firstLower)) {
+      return {
+        mode: firstLower,
+        baseUrl: typeof baseUrlOrOptions === "string" ? baseUrlOrOptions : "",
+        resolvedOptions: typeof baseUrlOrOptions === "object" && baseUrlOrOptions !== null ? baseUrlOrOptions : options
+      };
+    }
+    return {
+      mode: "json",
+      baseUrl: first,
+      resolvedOptions: typeof baseUrlOrOptions === "object" && baseUrlOrOptions !== null ? baseUrlOrOptions : options
+    };
+  }
+  function buildPostCheckRequest(mode) {
+    if (mode === "empty") {
+      return { method: "POST" };
+    }
+    if (mode === "text") {
+      return {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain"
+        },
+        body: `source=HCA.POST_CHECK;runtime=${runtimeId}`
+      };
+    }
+    if (mode === "form") {
+      return {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          source: "HCA.POST_CHECK",
+          runtime: runtimeId
+        }).toString()
+      };
+    }
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        source: "HCA.POST_CHECK",
+        stage: "post-check",
+        level: "info",
+        message: "Custom function POST probe.",
+        context: { runtimeId, mode }
+      })
+    };
   }
   function truncate(value) {
     return value.length > 120 ? `${value.slice(0, 120)}...` : value;

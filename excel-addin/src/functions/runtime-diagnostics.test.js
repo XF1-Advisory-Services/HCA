@@ -35,20 +35,78 @@ test("runtimeCheck reports missing timer without failing", async () => {
   assert.match(result, /timer=missing/);
 });
 
-test("postCheck sends a POST request to backend debug endpoint", async () => {
+test("postCheck sends a JSON POST request to backend debug endpoint", async () => {
   const requests = [];
-  const result = await postCheck("https://example.test", {
+  const result = await postCheck("json", "https://example.test", {
     fetchFn: async (url, options) => {
       requests.push({ url, options });
       return { ok: true, status: 200 };
     },
   });
 
-  assert.equal(result, "post=200");
+  assert.equal(result, "mode=json;post=200");
   assert.equal(requests.length, 1);
   assert.equal(requests[0].url, "https://example.test/debug/client-log");
   assert.equal(requests[0].options.method, "POST");
+  assert.equal(requests[0].options.headers["Content-Type"], "application/json");
   assert.equal(JSON.parse(requests[0].options.body).source, "HCA.POST_CHECK");
+});
+
+test("postCheck can send text/plain POST without JSON content type", async () => {
+  const requests = [];
+  const result = await postCheck("text", "https://example.test", {
+    fetchFn: async (url, options) => {
+      requests.push({ url, options });
+      return { ok: false, status: 422 };
+    },
+  });
+
+  assert.equal(result, "mode=text;post=422");
+  assert.equal(requests[0].options.headers["Content-Type"], "text/plain");
+  assert.match(requests[0].options.body, /runtime=/);
+});
+
+test("postCheck can send an empty POST with no headers or body", async () => {
+  const requests = [];
+  const result = await postCheck("empty", "https://example.test", {
+    fetchFn: async (url, options) => {
+      requests.push({ url, options });
+      return { ok: false, status: 422 };
+    },
+  });
+
+  assert.equal(result, "mode=empty;post=422");
+  assert.deepEqual(requests[0].options, { method: "POST" });
+});
+
+test("postCheck can send form-urlencoded POST", async () => {
+  const requests = [];
+  const result = await postCheck("form", "https://example.test", {
+    fetchFn: async (url, options) => {
+      requests.push({ url, options });
+      return { ok: false, status: 422 };
+    },
+  });
+
+  assert.equal(result, "mode=form;post=422");
+  assert.equal(
+    requests[0].options.headers["Content-Type"],
+    "application/x-www-form-urlencoded"
+  );
+  assert.match(requests[0].options.body, /source=HCA.POST_CHECK/);
+});
+
+test("postCheck treats the first argument as backend URL for old one-argument calls", async () => {
+  const requests = [];
+  await postCheck("https://example.test", {
+    fetchFn: async (url, options) => {
+      requests.push({ url, options });
+      return { ok: true, status: 200 };
+    },
+  });
+
+  assert.equal(requests[0].url, "https://example.test/debug/client-log");
+  assert.equal(requests[0].options.headers["Content-Type"], "application/json");
 });
 
 test("batchQueueCheck groups calls sharing a token before timer flush", async () => {

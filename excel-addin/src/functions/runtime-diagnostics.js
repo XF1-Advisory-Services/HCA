@@ -35,28 +35,26 @@ export async function runtimeCheck(options = {}) {
   ].join(";");
 }
 
-export async function postCheck(baseUrl = "", options = {}) {
-  const fetchFn = options.fetchFn ?? fetch;
+const POST_CHECK_MODES = new Set(["json", "text", "empty", "form"]);
+
+export async function postCheck(modeOrBaseUrl = "json", baseUrlOrOptions = "", options = {}) {
+  const { mode, baseUrl, resolvedOptions } = resolvePostCheckArgs(
+    modeOrBaseUrl,
+    baseUrlOrOptions,
+    options
+  );
+  const fetchFn = resolvedOptions.fetchFn ?? fetch;
   const cleanBaseUrl = normalizeBaseUrl(baseUrl);
 
   try {
-    const response = await fetchFn(`${cleanBaseUrl}/debug/client-log`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        source: "HCA.POST_CHECK",
-        stage: "post-check",
-        level: "info",
-        message: "Custom function POST probe.",
-        context: { runtimeId },
-      }),
-    });
+    const response = await fetchFn(
+      `${cleanBaseUrl}/debug/client-log`,
+      buildPostCheckRequest(mode)
+    );
 
-    return `post=${Number(response.status || 0)}`;
+    return `mode=${mode};post=${Number(response.status || 0)}`;
   } catch (error) {
-    return `post=error;message=${truncate(String(error?.message || error))}`;
+    return `mode=${mode};post=error;message=${truncate(String(error?.message || error))}`;
   }
 }
 
@@ -129,6 +127,74 @@ function scheduleDiagnosticFlush(callback, delayMs, options = {}) {
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || DEFAULT_BACKEND_URL).trim().replace(/\/$/, "");
+}
+
+function resolvePostCheckArgs(modeOrBaseUrl, baseUrlOrOptions, options) {
+  const first = String(modeOrBaseUrl || "json").trim();
+  const firstLower = first.toLowerCase();
+
+  if (POST_CHECK_MODES.has(firstLower)) {
+    return {
+      mode: firstLower,
+      baseUrl: typeof baseUrlOrOptions === "string" ? baseUrlOrOptions : "",
+      resolvedOptions:
+        typeof baseUrlOrOptions === "object" && baseUrlOrOptions !== null
+          ? baseUrlOrOptions
+          : options,
+    };
+  }
+
+  return {
+    mode: "json",
+    baseUrl: first,
+    resolvedOptions:
+      typeof baseUrlOrOptions === "object" && baseUrlOrOptions !== null
+        ? baseUrlOrOptions
+        : options,
+  };
+}
+
+function buildPostCheckRequest(mode) {
+  if (mode === "empty") {
+    return { method: "POST" };
+  }
+
+  if (mode === "text") {
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+      },
+      body: `source=HCA.POST_CHECK;runtime=${runtimeId}`,
+    };
+  }
+
+  if (mode === "form") {
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        source: "HCA.POST_CHECK",
+        runtime: runtimeId,
+      }).toString(),
+    };
+  }
+
+  return {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      source: "HCA.POST_CHECK",
+      stage: "post-check",
+      level: "info",
+      message: "Custom function POST probe.",
+      context: { runtimeId, mode },
+    }),
+  };
 }
 
 function truncate(value) {

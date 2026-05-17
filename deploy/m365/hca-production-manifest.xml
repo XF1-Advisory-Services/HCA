@@ -5,7 +5,7 @@
            xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
            xsi:type="TaskPaneApp">
   <Id>e4a9a4fd-7844-4daa-8df6-2bf4a87fb7be</Id>
-  <Version>1.0.14.0</Version>
+  <Version>1.0.15.0</Version>
   <ProviderName>XF1 Advisory</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="Heavy Calc Assist"/>
@@ -87,9 +87,9 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/taskpane.html"/>
-        <bt:Url id="Functions.Script.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/custom-functions.js?v=1.0.14"/>
-        <bt:Url id="Functions.Page.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/functions.html?v=1.0.14"/>
-        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/functions.json?v=1.0.14"/>
+        <bt:Url id="Functions.Script.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/custom-functions.js?v=1.0.15"/>
+        <bt:Url id="Functions.Page.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/functions.html?v=1.0.15"/>
+        <bt:Url id="Functions.Metadata.Url" DefaultValue="https://xf1-advisory-services.github.io/HCA/functions.json?v=1.0.15"/>
         <bt:Url id="GetStarted.LearnMoreUrl" DefaultValue="https://xf1-advisory-services.github.io/HCA/taskpane.html"/>
       </bt:Urls>
       <bt:ShortStrings>

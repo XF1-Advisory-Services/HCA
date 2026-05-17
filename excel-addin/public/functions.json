@@ -52,6 +52,13 @@
       "description": "Temporary POST request probe for Excel Desktop custom functions.",
       "parameters": [
         {
+          "name": "mode",
+          "description": "POST shape to test: json, text, empty, or form.",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
           "name": "backend_url",
           "description": "Optional backend URL. If omitted, the production backend is used.",
           "type": "string",
