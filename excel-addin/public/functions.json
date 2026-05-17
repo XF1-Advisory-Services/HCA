@@ -35,6 +35,59 @@
         "type": "number",
         "dimensionality": "scalar"
       }
+    },
+    {
+      "id": "RUNTIME_CHECK",
+      "name": "RUNTIME_CHECK",
+      "description": "Temporary runtime probe for Excel Desktop custom functions.",
+      "parameters": [],
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      }
+    },
+    {
+      "id": "POST_CHECK",
+      "name": "POST_CHECK",
+      "description": "Temporary POST request probe for Excel Desktop custom functions.",
+      "parameters": [
+        {
+          "name": "backend_url",
+          "description": "Optional backend URL. If omitted, the production backend is used.",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      }
+    },
+    {
+      "id": "BATCH_QUEUE_CHECK",
+      "name": "BATCH_QUEUE_CHECK",
+      "description": "Temporary shared-queue probe for Excel Desktop custom functions.",
+      "parameters": [
+        {
+          "name": "token",
+          "description": "Shared token used to group nearby calls.",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "delay_ms",
+          "description": "Delay before the queue flushes.",
+          "type": "number",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      }
     }
   ],
   "allowCustomDataForDataTypeAny": true

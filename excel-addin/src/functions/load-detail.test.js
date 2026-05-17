@@ -345,7 +345,7 @@ test("loadDetail uses optional user key override for single lookup request", asy
   }
 });
 
-test("production functions metadata exposes only LOAD_DETAIL", async () => {
+test("production functions metadata exposes LOAD_DETAIL and temporary runtime checks", async () => {
   const metadata = JSON.parse(
     await import("node:fs/promises").then((fs) =>
       fs.readFile(new URL("../../public/functions.json", import.meta.url), "utf8")
@@ -354,6 +354,6 @@ test("production functions metadata exposes only LOAD_DETAIL", async () => {
 
   assert.deepEqual(
     metadata.functions.map((fn) => fn.id),
-    ["LOAD_DETAIL"]
+    ["LOAD_DETAIL", "RUNTIME_CHECK", "POST_CHECK", "BATCH_QUEUE_CHECK"]
   );
 });

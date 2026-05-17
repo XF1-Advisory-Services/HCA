@@ -10,7 +10,7 @@
     "dev": "npm run build:functions && vite --host localhost --port 3000",
     "build": "npm run build:functions && vite build",
     "preview": "vite preview --host localhost --port 3000",
-    "test": "node --test src/taskpane/config.test.js src/functions/load-detail.test.js && npm run verify:functions"
+    "test": "node --test src/taskpane/config.test.js src/functions/load-detail.test.js src/functions/runtime-diagnostics.test.js && npm run verify:functions"
   },
   "dependencies": {
     "@vitejs/plugin-basic-ssl": "^1.1.0",
