@@ -1,6 +1,14 @@
 import unittest
+from unittest.mock import patch
 
-from app.detail_store import build_detail_records, load_detail_value, nonzero_detail_rows
+from app.detail_store import (
+    build_detail_records,
+    close_detail_store,
+    initialize_detail_store,
+    load_detail_value,
+    nonzero_detail_rows,
+    save_latest_run,
+)
 
 
 class DetailStoreTests(unittest.TestCase):
@@ -64,13 +72,14 @@ class DetailStoreTests(unittest.TestCase):
         )
 
     def test_load_detail_value_returns_zero_when_database_is_not_configured(self):
-        result = load_detail_value(
-            "user@example.com",
-            "payroll.output.base_salary_total",
-            "2026-05-31",
-            "E1",
-            database_url=None,
-        )
+        with patch.dict("os.environ", {}, clear=True):
+            result = load_detail_value(
+                "user@example.com",
+                "payroll.output.base_salary_total",
+                "2026-05-31",
+                "E1",
+                database_url=None,
+            )
 
         self.assertEqual(
             result,
@@ -80,6 +89,33 @@ class DetailStoreTests(unittest.TestCase):
                 "value": 0,
             },
         )
+
+    def test_initialize_detail_store_skips_without_database_url(self):
+        with patch.dict("os.environ", {}, clear=True):
+            result = initialize_detail_store(database_url=None)
+
+        self.assertEqual(
+            result,
+            {"status": "skipped", "reason": "database_not_configured"},
+        )
+
+    def test_close_detail_store_without_pool_is_safe(self):
+        close_detail_store()
+        close_detail_store()
+
+    def test_save_latest_run_skips_without_database_url(self):
+        with patch.dict("os.environ", {}, clear=True):
+            result = save_latest_run(
+                "user@example.com",
+                payload=None,
+                detail_rows=[],
+                database_url=None,
+            )
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "database_not_configured")
+        self.assertEqual(result["rowsPrepared"], 0)
+        self.assertEqual(result["rowsSaved"], 0)
 
 
 if __name__ == "__main__":

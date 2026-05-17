@@ -1,12 +1,18 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.detail_store import load_detail_value, save_latest_run
+from app.detail_store import (
+    close_detail_store,
+    initialize_detail_store,
+    load_detail_value,
+    save_latest_run,
+)
 from app.payroll_headcount import calculate_payroll_outputs
 from app.schemas import (
     ClientLogRequest,
@@ -26,7 +32,22 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
-app = FastAPI(title="XF1 External Calc Engine", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        result = initialize_detail_store()
+        logger.warning("detail_store_startup status=%s", result)
+    except Exception as error:
+        logger.exception("detail_store_startup_failed: %s", error)
+    yield
+    close_detail_store()
+
+
+app = FastAPI(
+    title="XF1 External Calc Engine",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,

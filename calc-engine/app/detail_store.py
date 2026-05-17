@@ -1,4 +1,5 @@
 import os
+from contextlib import contextmanager
 from typing import Any
 from uuid import uuid4
 
@@ -6,6 +7,16 @@ try:
     import psycopg
 except ImportError:  # pragma: no cover - exercised in deployed environment
     psycopg = None
+
+try:
+    from psycopg_pool import ConnectionPool
+except ImportError:  # pragma: no cover - exercised in deployed environment
+    ConnectionPool = None
+
+
+_pool: Any | None = None
+_pool_database_url: str | None = None
+_schema_initialized = False
 
 
 SCHEMA_SQL = [
@@ -40,6 +51,92 @@ SCHEMA_SQL = [
 ]
 
 
+def get_database_url(database_url: str | None = None) -> str | None:
+    return database_url or os.getenv("DATABASE_URL")
+
+
+def detail_store_unavailable_reason(
+    user_key: str | None,
+    database_url: str | None,
+) -> str | None:
+    if not normalize_user_key(user_key):
+        return "missing_user_key"
+    if not database_url:
+        return "database_not_configured"
+    if psycopg is None:
+        return "database_driver_not_installed"
+    if ConnectionPool is None:
+        return "database_pool_not_installed"
+    return None
+
+
+def ensure_schema(connection: Any) -> None:
+    for statement in SCHEMA_SQL:
+        connection.execute(statement)
+
+
+def initialize_detail_store(database_url: str | None = None) -> dict[str, Any]:
+    global _pool, _pool_database_url, _schema_initialized
+
+    database_url = get_database_url(database_url)
+    if not database_url:
+        return {"status": "skipped", "reason": "database_not_configured"}
+
+    if psycopg is None:
+        return {"status": "skipped", "reason": "database_driver_not_installed"}
+
+    if ConnectionPool is None:
+        return {"status": "skipped", "reason": "database_pool_not_installed"}
+
+    if _pool is not None and _pool_database_url == database_url:
+        return {"status": "ready"}
+
+    if _pool is not None:
+        _pool.close()
+
+    _pool = ConnectionPool(
+        conninfo=database_url,
+        min_size=1,
+        max_size=int(os.getenv("DETAIL_DB_POOL_MAX_SIZE", "5")),
+        open=True,
+    )
+    _pool_database_url = database_url
+    _schema_initialized = False
+
+    with _pool.connection() as connection:
+        ensure_schema(connection)
+
+    _schema_initialized = True
+    return {"status": "ready"}
+
+
+def close_detail_store() -> None:
+    global _pool, _pool_database_url, _schema_initialized
+
+    if _pool is not None:
+        _pool.close()
+
+    _pool = None
+    _pool_database_url = None
+    _schema_initialized = False
+
+
+@contextmanager
+def detail_connection(database_url: str | None = None):
+    database_url = get_database_url(database_url)
+
+    if _pool is not None and (_pool_database_url == database_url or database_url is None):
+        with _pool.connection() as connection:
+            yield connection
+        return
+
+    if not database_url:
+        raise RuntimeError("database_not_configured")
+
+    with psycopg.connect(database_url) as connection:
+        yield connection
+
+
 def save_latest_run(
     user_key: str | None,
     payload: Any,
@@ -48,37 +145,21 @@ def save_latest_run(
 ) -> dict[str, Any]:
     detail_rows_to_save = nonzero_detail_rows(detail_rows)
     clean_user_key = normalize_user_key(user_key)
-    if not clean_user_key:
+    database_url = get_database_url(database_url)
+    unavailable_reason = detail_store_unavailable_reason(clean_user_key, database_url)
+    if unavailable_reason is not None:
         return {
             "status": "skipped",
-            "reason": "missing_user_key",
-            "rowsPrepared": len(detail_rows),
-            "rowsSaved": 0,
-        }
-
-    database_url = database_url or os.getenv("DATABASE_URL")
-    if not database_url:
-        return {
-            "status": "skipped",
-            "reason": "database_not_configured",
-            "rowsPrepared": len(detail_rows),
-            "rowsSaved": 0,
-        }
-
-    if psycopg is None:
-        return {
-            "status": "skipped",
-            "reason": "database_driver_not_installed",
+            "reason": unavailable_reason,
             "rowsPrepared": len(detail_rows),
             "rowsSaved": 0,
         }
 
     run_id = str(uuid4())
 
-    with psycopg.connect(database_url) as connection:
+    with detail_connection(database_url) as connection:
         with connection.transaction():
-            for statement in SCHEMA_SQL:
-                connection.execute(statement)
+            ensure_schema(connection)
             connection.execute(
                 "DELETE FROM calc_runs WHERE user_key = %s",
                 (clean_user_key,),
@@ -147,24 +228,12 @@ def load_detail_value(
     clean_output_key = str(output_key or "").strip()
     clean_period_end_date = str(period_end_date or "").strip()
     clean_unit_id = str(unit_id or "").strip()
+    database_url = get_database_url(database_url)
+    unavailable_reason = detail_store_unavailable_reason(clean_user_key, database_url)
+    if unavailable_reason is not None:
+        return {"status": "skipped", "reason": unavailable_reason, "value": 0}
 
-    if not clean_user_key:
-        return {"status": "skipped", "reason": "missing_user_key", "value": 0}
-
-    database_url = database_url or os.getenv("DATABASE_URL")
-    if not database_url:
-        return {"status": "skipped", "reason": "database_not_configured", "value": 0}
-
-    if psycopg is None:
-        return {
-            "status": "skipped",
-            "reason": "database_driver_not_installed",
-            "value": 0,
-        }
-
-    with psycopg.connect(database_url) as connection:
-        for statement in SCHEMA_SQL:
-            connection.execute(statement)
+    with detail_connection(database_url) as connection:
         row = connection.execute(
             """
             SELECT value
