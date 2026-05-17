@@ -354,6 +354,12 @@ test("production functions metadata exposes LOAD_DETAIL and temporary runtime ch
 
   assert.deepEqual(
     metadata.functions.map((fn) => fn.id),
-    ["LOAD_DETAIL", "RUNTIME_CHECK", "POST_CHECK", "BATCH_QUEUE_CHECK"]
+    [
+      "LOAD_DETAIL",
+      "RUNTIME_CHECK",
+      "POST_CHECK",
+      "BATCH_QUEUE_CHECK",
+      "TEXT_BATCH_CHECK",
+    ]
   );
 });

@@ -4,6 +4,7 @@ import unittest
 try:
     from app.main import (
         debug_client_log,
+        parse_load_detail_batch_transport,
         payroll_load_detail_batch,
         payroll_load_detail,
         payroll_load_detail_get,
@@ -17,6 +18,7 @@ try:
     )
 except ModuleNotFoundError:
     debug_client_log = None
+    parse_load_detail_batch_transport = None
     payroll_load_detail_batch = None
     payroll_load_detail = None
     payroll_load_detail_get = None
@@ -175,6 +177,31 @@ class PayrollApiTests(unittest.TestCase):
         self.assertEqual(response["foundCount"], 0)
         self.assertEqual(response["timings"]["itemCount"], 2)
         self.assertGreaterEqual(response["timings"]["totalBackendMs"], 0)
+
+    def test_parse_load_detail_batch_transport_accepts_text_payload(self):
+        if parse_load_detail_batch_transport is None:
+            self.skipTest("FastAPI test dependency is not installed.")
+
+        request = parse_load_detail_batch_transport(
+            "text/plain",
+            '{"userKey":"user@example.com","items":[{"outputKey":"payroll.output.base_salary_total","periodEndDate":"2026-05-31","unitId":"E1"}]}',
+        )
+
+        self.assertEqual(request.userKey, "user@example.com")
+        self.assertEqual(len(request.items), 1)
+        self.assertEqual(request.items[0].outputKey, "payroll.output.base_salary_total")
+
+    def test_parse_load_detail_batch_transport_accepts_form_payload(self):
+        if parse_load_detail_batch_transport is None:
+            self.skipTest("FastAPI test dependency is not installed.")
+
+        request = parse_load_detail_batch_transport(
+            "application/x-www-form-urlencoded",
+            "payload=%7B%22userKey%22%3A%22user%40example.com%22%2C%22items%22%3A%5B%7B%22outputKey%22%3A%22payroll.output.401k%22%2C%22periodEndDate%22%3A%222026-05-31%22%2C%22unitId%22%3A%22E1%22%7D%5D%7D",
+        )
+
+        self.assertEqual(request.userKey, "user@example.com")
+        self.assertEqual(request.items[0].outputKey, "payroll.output.401k")
 
     def test_load_detail_batch_rejects_more_than_1000_items(self):
         if PayrollLoadDetailBatchRequest is None:

@@ -251,6 +251,45 @@ var HcaCustomFunctionsBundle = (() => {
     }
     return promise;
   }
+  async function textBatchCheck(userKey, outputKey, period, unitId, mode = "text", baseUrl = "", options = {}) {
+    const cleanMode = String(mode || "text").trim().toLowerCase() === "form" ? "form" : "text";
+    const cleanBaseUrl = normalizeBaseUrl(baseUrl);
+    const fetchFn = options.fetchFn ?? fetch;
+    const payload = {
+      userKey: String(userKey ?? "").trim(),
+      items: [
+        {
+          outputKey: String(outputKey ?? "").trim(),
+          periodEndDate: normalizePeriodEndDate(period),
+          unitId: String(unitId ?? "").trim()
+        },
+        {
+          outputKey: String(outputKey ?? "").trim(),
+          periodEndDate: normalizePeriodEndDate(period),
+          unitId: String(unitId ?? "").trim()
+        }
+      ]
+    };
+    try {
+      const response = await fetchFn(
+        `${cleanBaseUrl}/payroll/load-detail-batch-text`,
+        buildTextBatchRequest(cleanMode, payload)
+      );
+      if (!response.ok) {
+        return `mode=${cleanMode};http=${Number(response.status || 0)}`;
+      }
+      const body = await response.json();
+      const values = Array.isArray(body?.values) ? body.values : [];
+      return [
+        `mode=${cleanMode}`,
+        `status=${body?.status || "unknown"}`,
+        `count=${values.length}`,
+        `first=${Number(values[0] || 0)}`
+      ].join(";");
+    } catch (error) {
+      return `mode=${cleanMode};error=${truncate(String(error?.message || error))}`;
+    }
+  }
   function flushDiagnosticBatch(token) {
     const group = diagnosticBatchGroups.get(token);
     if (!group) {
@@ -339,6 +378,25 @@ var HcaCustomFunctionsBundle = (() => {
       })
     };
   }
+  function buildTextBatchRequest(mode, payload) {
+    const serializedPayload = JSON.stringify(payload);
+    if (mode === "form") {
+      return {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({ payload: serializedPayload }).toString()
+      };
+    }
+    return {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain"
+      },
+      body: serializedPayload
+    };
+  }
   function truncate(value) {
     return value.length > 120 ? `${value.slice(0, 120)}...` : value;
   }
@@ -349,5 +407,6 @@ var HcaCustomFunctionsBundle = (() => {
     globalThis.CustomFunctions.associate("RUNTIME_CHECK", runtimeCheck);
     globalThis.CustomFunctions.associate("POST_CHECK", postCheck);
     globalThis.CustomFunctions.associate("BATCH_QUEUE_CHECK", batchQueueCheck);
+    globalThis.CustomFunctions.associate("TEXT_BATCH_CHECK", textBatchCheck);
   }
 })();

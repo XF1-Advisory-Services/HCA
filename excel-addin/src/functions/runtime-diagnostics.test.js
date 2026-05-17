@@ -5,6 +5,7 @@ import {
   batchQueueCheck,
   postCheck,
   runtimeCheck,
+  textBatchCheck,
 } from "./runtime-diagnostics.js";
 
 test("runtimeCheck reports promise, timer, fetch, and storage support", async () => {
@@ -130,4 +131,60 @@ test("batchQueueCheck groups calls sharing a token before timer flush", async ()
   assert.match(values[0], /size=2/);
   assert.match(values[1], /index=2/);
   assert.match(values[1], /size=2/);
+});
+
+test("textBatchCheck sends two lookups as text/plain batch payload", async () => {
+  const requests = [];
+  const result = await textBatchCheck(
+    "user@example.com",
+    "payroll.output.base_salary_total",
+    "2026-05-15",
+    "E1",
+    "text",
+    "https://example.test",
+    {
+      fetchFn: async (url, options) => {
+        requests.push({ url, options });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ status: "ok", values: [99, 99], foundCount: 2 }),
+        };
+      },
+    }
+  );
+
+  assert.equal(result, "mode=text;status=ok;count=2;first=99");
+  assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch-text");
+  assert.equal(requests[0].options.headers["Content-Type"], "text/plain");
+  assert.equal(JSON.parse(requests[0].options.body).items.length, 2);
+});
+
+test("textBatchCheck can send form encoded batch payload", async () => {
+  const requests = [];
+  const result = await textBatchCheck(
+    "user@example.com",
+    "payroll.output.base_salary_total",
+    "2026-05-15",
+    "E1",
+    "form",
+    "https://example.test",
+    {
+      fetchFn: async (url, options) => {
+        requests.push({ url, options });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ status: "ok", values: [88, 88], foundCount: 2 }),
+        };
+      },
+    }
+  );
+
+  assert.equal(result, "mode=form;status=ok;count=2;first=88");
+  assert.equal(
+    requests[0].options.headers["Content-Type"],
+    "application/x-www-form-urlencoded"
+  );
+  assert.match(requests[0].options.body, /^payload=/);
 });

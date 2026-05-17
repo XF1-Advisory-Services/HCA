@@ -1,11 +1,14 @@
 import logging
 import os
+import json
 from contextlib import asynccontextmanager
 from time import perf_counter
 from typing import Any
+from urllib.parse import parse_qs
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 
 from app.detail_store import (
     close_detail_store,
@@ -156,6 +159,46 @@ def payroll_load_detail_batch(
         timings["totalBackendMs"],
     )
     return result
+
+
+@app.post("/payroll/load-detail-batch-text")
+async def payroll_load_detail_batch_text(request: Request) -> dict[str, Any]:
+    body_text = (await request.body()).decode("utf-8")
+    try:
+        payload = parse_load_detail_batch_transport(
+            request.headers.get("content-type", ""),
+            body_text,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    return payroll_load_detail_batch(payload)
+
+
+def parse_load_detail_batch_transport(
+    content_type: str,
+    body_text: str,
+) -> PayrollLoadDetailBatchRequest:
+    normalized_content_type = content_type.split(";", 1)[0].strip().lower()
+
+    if normalized_content_type == "application/x-www-form-urlencoded":
+        form_values = parse_qs(body_text, keep_blank_values=True)
+        payload_values = form_values.get("payload")
+        if not payload_values:
+            raise ValueError("Missing form field: payload")
+        raw_payload = payload_values[0]
+    else:
+        raw_payload = body_text
+
+    try:
+        decoded = json.loads(raw_payload)
+    except json.JSONDecodeError as error:
+        raise ValueError("Batch payload must be valid JSON") from error
+
+    try:
+        return PayrollLoadDetailBatchRequest.model_validate(decoded)
+    except ValidationError as error:
+        raise ValueError(str(error)) from error
 
 
 @app.post("/debug/client-log")

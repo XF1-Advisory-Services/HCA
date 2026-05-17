@@ -3,6 +3,7 @@ import {
   batchQueueCheck,
   postCheck,
   runtimeCheck,
+  textBatchCheck,
 } from "./runtime-diagnostics.js";
 
 if (globalThis.CustomFunctions?.associate) {
@@ -10,4 +11,5 @@ if (globalThis.CustomFunctions?.associate) {
   globalThis.CustomFunctions.associate("RUNTIME_CHECK", runtimeCheck);
   globalThis.CustomFunctions.associate("POST_CHECK", postCheck);
   globalThis.CustomFunctions.associate("BATCH_QUEUE_CHECK", batchQueueCheck);
+  globalThis.CustomFunctions.associate("TEXT_BATCH_CHECK", textBatchCheck);
 }

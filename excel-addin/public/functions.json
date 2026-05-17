@@ -95,6 +95,55 @@
         "type": "string",
         "dimensionality": "scalar"
       }
+    },
+    {
+      "id": "TEXT_BATCH_CHECK",
+      "name": "TEXT_BATCH_CHECK",
+      "description": "Temporary text/form batch POST probe for Excel Desktop custom functions.",
+      "parameters": [
+        {
+          "name": "user_key",
+          "description": "User ID/email used for the detail lookup.",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "output_key",
+          "description": "Config output key, for example payroll.output.base_salary_total.",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "period",
+          "description": "Any Excel date in the forecast month.",
+          "type": "any",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "unit_id",
+          "description": "Employee ID from PayrollData.",
+          "type": "string",
+          "dimensionality": "scalar"
+        },
+        {
+          "name": "mode",
+          "description": "Transport to test: text or form.",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        },
+        {
+          "name": "backend_url",
+          "description": "Optional backend URL. If omitted, the production backend is used.",
+          "type": "string",
+          "dimensionality": "scalar",
+          "optional": true
+        }
+      ],
+      "result": {
+        "type": "string",
+        "dimensionality": "scalar"
+      }
     }
   ],
   "allowCustomDataForDataTypeAny": true
