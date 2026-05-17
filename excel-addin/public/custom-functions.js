@@ -158,13 +158,10 @@
       options && options.delayMs !== undefined
         ? options.delayMs
         : loadDetailBatchDelayMs;
-    const setTimer =
-      options && options.setTimeoutFn ? options.setTimeoutFn : setTimeout;
-
     if (!group.timerId) {
-      group.timerId = setTimer(() => {
+      group.timerId = scheduleLoadDetailFlush(() => {
         flushLoadDetailGroup(groupKey);
-      }, delayMs);
+      }, delayMs, options || {});
     }
 
     return promise;
@@ -288,6 +285,19 @@
 
   function normalizeBaseUrl(baseUrl) {
     return String(baseUrl || defaultBackendUrl).trim().replace(/\/$/, "");
+  }
+
+  function scheduleLoadDetailFlush(callback, delayMs, options) {
+    if (options && typeof options.setTimeoutFn === "function") {
+      return options.setTimeoutFn(callback, delayMs);
+    }
+
+    if (typeof root.setTimeout === "function") {
+      return root.setTimeout(callback, delayMs);
+    }
+
+    Promise.resolve().then(callback);
+    return true;
   }
 
   function normalizePeriodEndDate(value) {

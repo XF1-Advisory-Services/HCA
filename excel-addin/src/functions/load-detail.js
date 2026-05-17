@@ -158,12 +158,11 @@ export function queueLoadDetailLookup(baseUrl, userKey, item, options = {}) {
   });
 
   const delayMs = options.delayMs ?? LOAD_DETAIL_BATCH_DELAY_MS;
-  const setTimer = options.setTimeoutFn ?? setTimeout;
 
   if (!group.timerId) {
-    group.timerId = setTimer(() => {
+    group.timerId = scheduleLoadDetailFlush(() => {
       flushLoadDetailGroup(groupKey);
-    }, delayMs);
+    }, delayMs, options);
   }
 
   return promise;
@@ -287,6 +286,19 @@ function buildLoadDetailGroupKey(baseUrl, userKey) {
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || DEFAULT_BACKEND_URL).trim().replace(/\/$/, "");
+}
+
+function scheduleLoadDetailFlush(callback, delayMs, options = {}) {
+  if (typeof options.setTimeoutFn === "function") {
+    return options.setTimeoutFn(callback, delayMs);
+  }
+
+  if (typeof globalThis.setTimeout === "function") {
+    return globalThis.setTimeout(callback, delayMs);
+  }
+
+  Promise.resolve().then(callback);
+  return true;
 }
 
 export function buildClientLogContext(outputKey, period, unitId, userKeyOverride = "") {

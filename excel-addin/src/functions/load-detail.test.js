@@ -303,6 +303,40 @@ test("queueLoadDetailLookup rejects when response length does not match", async 
   );
 });
 
+test("queueLoadDetailLookup works when global setTimeout is unavailable", async () => {
+  const previousSetTimeout = globalThis.setTimeout;
+  const requests = [];
+  globalThis.setTimeout = undefined;
+
+  try {
+    const value = await queueLoadDetailLookup(
+      "https://example.test",
+      "user@example.com",
+      {
+        outputKey: "payroll.output.401k",
+        periodEndDate: "2026-05-31",
+        unitId: "E1",
+      },
+      {
+        fetchFn: async (url, options) => {
+          requests.push({ url, body: JSON.parse(options.body) });
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ status: "ok", values: [432], foundCount: 1 }),
+          };
+        },
+      }
+    );
+
+    assert.equal(value, 432);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch");
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+  }
+});
+
 test("loadDetail uses optional user key override for batch request", async () => {
   const requests = [];
   const previousFetch = globalThis.fetch;
