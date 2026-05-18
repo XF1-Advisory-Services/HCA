@@ -88,7 +88,7 @@ test("queueLoadDetailLookup batches 1000 lookups into 2 requests", async () => {
 
   async function fetchFn(url, options) {
     const body = JSON.parse(options.body);
-    requests.push({ url, body });
+    requests.push({ url, body, contentType: options.headers["Content-Type"] });
     return {
       ok: true,
       status: 200,
@@ -128,8 +128,10 @@ test("queueLoadDetailLookup batches 1000 lookups into 2 requests", async () => {
   const values = await Promise.all(promises);
 
   assert.equal(requests.length, 2);
-  assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch");
+  assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch-text");
+  assert.equal(requests[0].contentType, "text/plain");
   assert.equal(requests[0].body.items.length, 500);
+  assert.equal(requests[1].contentType, "text/plain");
   assert.equal(requests[1].body.items.length, 500);
   assert.equal(values.length, 1000);
   assert.equal(values[0], 1);
@@ -144,7 +146,7 @@ test("queueLoadDetailLookup dedupes identical lookups in one pending batch", asy
 
   async function fetchFn(url, options) {
     const body = JSON.parse(options.body);
-    requests.push({ url, body });
+    requests.push({ url, body, contentType: options.headers["Content-Type"] });
     return {
       ok: true,
       status: 200,
@@ -188,7 +190,7 @@ test("queueLoadDetailLookup keeps different backend URLs in separate batches", a
 
   async function fetchFn(url, options) {
     const body = JSON.parse(options.body);
-    requests.push({ url, body });
+    requests.push({ url, body, contentType: options.headers["Content-Type"] });
     const value = url.includes("first.example.test") ? 1 : 2;
     return {
       ok: true,
@@ -233,11 +235,11 @@ test("queueLoadDetailLookup keeps different backend URLs in separate batches", a
   assert.equal(requests.length, 2);
   assert.equal(
     requests[0].url,
-    "https://first.example.test/payroll/load-detail-batch"
+    "https://first.example.test/payroll/load-detail-batch-text"
   );
   assert.equal(
     requests[1].url,
-    "https://second.example.test/payroll/load-detail-batch"
+    "https://second.example.test/payroll/load-detail-batch-text"
   );
 });
 
@@ -300,48 +302,66 @@ test("queueLoadDetailLookup works when global setTimeout is unavailable", async 
 
     assert.equal(value, 432);
     assert.equal(requests.length, 1);
-    assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch");
+    assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch-text");
   } finally {
     globalThis.setTimeout = previousSetTimeout;
   }
 });
 
-test("loadDetail uses optional user key override for single lookup request", async () => {
+test("loadDetail uses optional user key override for text batch request", async () => {
   const requests = [];
+  const timers = [];
   const previousFetch = globalThis.fetch;
   const previousLocalStorage = globalThis.localStorage;
+  const previousSetTimeout = globalThis.setTimeout;
 
   globalThis.localStorage = {
     getItem: (key) => (key === "xf1.backendUrl" ? "https://example.test" : ""),
     setItem: () => {},
   };
   globalThis.fetch = async (url, options) => {
-    requests.push({ url, options });
+    requests.push({ url, body: JSON.parse(options.body), options });
     return {
       ok: true,
       status: 200,
-      json: async () => ({ status: "found", value: 99 }),
+      json: async () => ({ status: "ok", values: [99], foundCount: 1 }),
     };
+  };
+  globalThis.setTimeout = (callback) => {
+    timers.push(callback);
+    return timers.length;
   };
 
   try {
-    const value = await loadDetail(
+    const promise = loadDetail(
       "payroll.output.401k",
       "2026-05-15",
       "E1",
       "override@example.com"
     );
+    for (let attempt = 0; attempt < 10 && timers.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    assert.equal(timers.length, 1);
+    timers[0]();
+    const value = await promise;
 
     assert.equal(value, 99);
     assert.equal(requests.length, 1);
-    assert.equal(
-      requests[0].url,
-      "https://example.test/payroll/load-detail?userKey=override%40example.com&outputKey=payroll.output.401k&periodEndDate=2026-05-31&unitId=E1"
-    );
-    assert.equal(requests[0].options, undefined);
+    assert.equal(requests[0].url, "https://example.test/payroll/load-detail-batch-text");
+    assert.equal(requests[0].options.headers["Content-Type"], "text/plain");
+    assert.equal(requests[0].body.userKey, "override@example.com");
+    assert.deepEqual(requests[0].body.items, [
+      {
+        outputKey: "payroll.output.401k",
+        periodEndDate: "2026-05-31",
+        unitId: "E1",
+      },
+    ]);
   } finally {
     globalThis.fetch = previousFetch;
     globalThis.localStorage = previousLocalStorage;
+    globalThis.setTimeout = previousSetTimeout;
   }
 });
 

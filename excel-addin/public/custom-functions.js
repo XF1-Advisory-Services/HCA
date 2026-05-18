@@ -18,11 +18,16 @@ var HcaCustomFunctionsBundle = (() => {
 
   // src/functions/load-detail.js
   var DEFAULT_BACKEND_URL = "https://hca-calc-engine.onrender.com";
+  var LOAD_DETAIL_BATCH_DELAY_MS = 50;
+  var LOAD_DETAIL_BATCH_MAX_SIZE = 500;
   var SETTINGS_CACHE_TTL_MS = 1e3;
+  var LOOKUP_KEY_DELIMITER = "";
   var settingsCache = {
     expiresAt: 0,
     promise: null
   };
+  var batchGroups = /* @__PURE__ */ new Map();
+  var pendingByLookupKey = /* @__PURE__ */ new Map();
   async function loadDetail(outputKey, period, unitId, userKeyOverride = "") {
     let stage = "start";
     let baseUrl = DEFAULT_BACKEND_URL;
@@ -50,8 +55,12 @@ var HcaCustomFunctionsBundle = (() => {
       context.outputKey = requestBody.outputKey;
       context.periodEndDate = requestBody.periodEndDate;
       context.unitId = requestBody.unitId;
-      stage = "backend-single";
-      return await sendLoadDetailSingle(baseUrl, requestBody);
+      stage = "backend-batch-text";
+      return await queueLoadDetailLookup(baseUrl, userKey, {
+        outputKey: requestBody.outputKey,
+        periodEndDate: requestBody.periodEndDate,
+        unitId: requestBody.unitId
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await reportClientError(baseUrl, stage, message, context);
@@ -60,29 +69,62 @@ var HcaCustomFunctionsBundle = (() => {
       );
     }
   }
-  function buildLoadDetailUrl(baseUrl, requestBody) {
-    const params = new URLSearchParams({
-      userKey: requestBody.userKey,
-      outputKey: requestBody.outputKey,
-      periodEndDate: requestBody.periodEndDate,
-      unitId: requestBody.unitId
+  function buildLoadDetailLookupKey(userKey, item) {
+    return [
+      normalizeUserKey(userKey),
+      String(item.outputKey ?? "").trim(),
+      String(item.periodEndDate ?? "").trim(),
+      String(item.unitId ?? "").trim()
+    ].join(LOOKUP_KEY_DELIMITER);
+  }
+  function queueLoadDetailLookup(baseUrl, userKey, item, options = {}) {
+    const cleanBaseUrl = normalizeBaseUrl(baseUrl || DEFAULT_BACKEND_URL);
+    const cleanUserKey = normalizeUserKey(userKey);
+    const groupKey = buildLoadDetailGroupKey(cleanBaseUrl, cleanUserKey);
+    const itemLookupKey = buildLoadDetailLookupKey(cleanUserKey, item);
+    const pendingKey = `${groupKey}${LOOKUP_KEY_DELIMITER}${itemLookupKey}`;
+    if (pendingByLookupKey.has(pendingKey)) {
+      return pendingByLookupKey.get(pendingKey).promise;
+    }
+    let resolve;
+    let reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
     });
-    return `${baseUrl.replace(/\/$/, "")}/payroll/load-detail?${params.toString()}`;
+    pendingByLookupKey.set(pendingKey, { promise });
+    let group = batchGroups.get(groupKey);
+    if (!group) {
+      group = {
+        baseUrl: cleanBaseUrl,
+        userKey: cleanUserKey,
+        items: [],
+        timerId: null,
+        options
+      };
+      batchGroups.set(groupKey, group);
+    }
+    group.items.push({
+      lookupKey: pendingKey,
+      item: {
+        outputKey: String(item.outputKey ?? "").trim(),
+        periodEndDate: String(item.periodEndDate ?? "").trim(),
+        unitId: String(item.unitId ?? "").trim()
+      },
+      resolve,
+      reject
+    });
+    const delayMs = options.delayMs ?? LOAD_DETAIL_BATCH_DELAY_MS;
+    if (!group.timerId) {
+      group.timerId = scheduleLoadDetailFlush(() => {
+        flushLoadDetailGroup(groupKey);
+      }, delayMs, options);
+    }
+    return promise;
   }
   function normalizePeriodEndDate(value) {
     const date = parseInputDate(value);
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
-  }
-  function parseLoadDetailValue(responseBody) {
-    return Number(responseBody?.value || 0);
-  }
-  async function sendLoadDetailSingle(baseUrl, requestBody, fetchFn = fetch) {
-    const response = await fetchFn(buildLoadDetailUrl(baseUrl, requestBody));
-    if (!response.ok) {
-      const responseText = await readResponseText(response);
-      throw new Error(`LOAD_DETAIL backend error: ${response.status} ${responseText}`);
-    }
-    return parseLoadDetailValue(await response.json());
   }
   async function readLoadDetailSettings() {
     const now = Date.now();
@@ -98,6 +140,85 @@ var HcaCustomFunctionsBundle = (() => {
     }));
     settingsCache.expiresAt = now + SETTINGS_CACHE_TTL_MS;
     return settingsCache.promise;
+  }
+  async function flushLoadDetailGroup(groupKey) {
+    const group = batchGroups.get(groupKey);
+    if (!group) {
+      return;
+    }
+    batchGroups.delete(groupKey);
+    group.timerId = null;
+    const maxBatchSize = group.options?.maxBatchSize ?? LOAD_DETAIL_BATCH_MAX_SIZE;
+    const chunks = chunkArray(group.items, maxBatchSize);
+    await Promise.all(
+      chunks.map(
+        (chunk) => sendLoadDetailBatch(group.baseUrl, group.userKey, chunk, group.options)
+      )
+    );
+  }
+  function chunkArray(values, size) {
+    const chunks = [];
+    for (let index = 0; index < values.length; index += size) {
+      chunks.push(values.slice(index, index + size));
+    }
+    return chunks;
+  }
+  async function sendLoadDetailBatch(baseUrl, userKey, queuedItems, options = {}) {
+    const fetchFn = options.fetchFn ?? fetch;
+    try {
+      const response = await fetchFn(`${baseUrl}/payroll/load-detail-batch-text`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain"
+        },
+        body: JSON.stringify({
+          userKey,
+          items: queuedItems.map(({ item }) => ({
+            outputKey: item.outputKey,
+            periodEndDate: item.periodEndDate,
+            unitId: item.unitId
+          }))
+        })
+      });
+      if (!response.ok) {
+        const responseText = await readResponseText(response);
+        throw new Error(
+          `LOAD_DETAIL batch backend error: ${response.status} ${responseText}`
+        );
+      }
+      const body = await response.json();
+      const values = Array.isArray(body?.values) ? body.values : [];
+      if (values.length !== queuedItems.length) {
+        throw new Error(
+          `LOAD_DETAIL batch returned ${values.length} values for ${queuedItems.length} lookups.`
+        );
+      }
+      queuedItems.forEach((queuedItem, index) => {
+        pendingByLookupKey.delete(queuedItem.lookupKey);
+        queuedItem.resolve(Number(values[index] || 0));
+      });
+    } catch (error) {
+      queuedItems.forEach((queuedItem) => {
+        pendingByLookupKey.delete(queuedItem.lookupKey);
+        queuedItem.reject(error);
+      });
+    }
+  }
+  function buildLoadDetailGroupKey(baseUrl, userKey) {
+    return `${baseUrl}${LOOKUP_KEY_DELIMITER}${userKey}`;
+  }
+  function normalizeBaseUrl(baseUrl) {
+    return String(baseUrl || DEFAULT_BACKEND_URL).trim().replace(/\/$/, "");
+  }
+  function scheduleLoadDetailFlush(callback, delayMs, options = {}) {
+    if (typeof options.setTimeoutFn === "function") {
+      return options.setTimeoutFn(callback, delayMs);
+    }
+    if (typeof globalThis.setTimeout === "function") {
+      return globalThis.setTimeout(callback, delayMs);
+    }
+    Promise.resolve().then(callback);
+    return true;
   }
   function buildClientLogContext(outputKey, period, unitId, userKeyOverride = "") {
     return {
@@ -213,7 +334,7 @@ var HcaCustomFunctionsBundle = (() => {
       options
     );
     const fetchFn = resolvedOptions.fetchFn ?? fetch;
-    const cleanBaseUrl = normalizeBaseUrl(baseUrl);
+    const cleanBaseUrl = normalizeBaseUrl2(baseUrl);
     try {
       const response = await fetchFn(
         `${cleanBaseUrl}/debug/client-log`,
@@ -253,7 +374,7 @@ var HcaCustomFunctionsBundle = (() => {
   }
   async function textBatchCheck(userKey, outputKey, period, unitId, mode = "text", baseUrl = "", options = {}) {
     const cleanMode = String(mode || "text").trim().toLowerCase() === "form" ? "form" : "text";
-    const cleanBaseUrl = normalizeBaseUrl(baseUrl);
+    const cleanBaseUrl = normalizeBaseUrl2(baseUrl);
     const fetchFn = options.fetchFn ?? fetch;
     const payload = {
       userKey: String(userKey ?? "").trim(),
@@ -320,7 +441,7 @@ var HcaCustomFunctionsBundle = (() => {
     Promise.resolve().then(callback);
     return true;
   }
-  function normalizeBaseUrl(baseUrl) {
+  function normalizeBaseUrl2(baseUrl) {
     return String(baseUrl || DEFAULT_BACKEND_URL2).trim().replace(/\/$/, "");
   }
   function resolvePostCheckArgs(modeOrBaseUrl, baseUrlOrOptions, options) {

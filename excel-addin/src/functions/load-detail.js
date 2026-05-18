@@ -50,8 +50,12 @@ export async function loadDetail(outputKey, period, unitId, userKeyOverride = ""
     context.periodEndDate = requestBody.periodEndDate;
     context.unitId = requestBody.unitId;
 
-    stage = "backend-single";
-    return await sendLoadDetailSingle(baseUrl, requestBody);
+    stage = "backend-batch-text";
+    return await queueLoadDetailLookup(baseUrl, userKey, {
+      outputKey: requestBody.outputKey,
+      periodEndDate: requestBody.periodEndDate,
+      unitId: requestBody.unitId,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await reportClientError(baseUrl, stage, message, context);
@@ -154,17 +158,6 @@ export function parseLoadDetailValue(responseBody) {
   return Number(responseBody?.value || 0);
 }
 
-async function sendLoadDetailSingle(baseUrl, requestBody, fetchFn = fetch) {
-  const response = await fetchFn(buildLoadDetailUrl(baseUrl, requestBody));
-
-  if (!response.ok) {
-    const responseText = await readResponseText(response);
-    throw new Error(`LOAD_DETAIL backend error: ${response.status} ${responseText}`);
-  }
-
-  return parseLoadDetailValue(await response.json());
-}
-
 async function readLoadDetailSettings() {
   const now = Date.now();
   if (settingsCache.promise && settingsCache.expiresAt > now) {
@@ -214,10 +207,10 @@ async function sendLoadDetailBatch(baseUrl, userKey, queuedItems, options = {}) 
   const fetchFn = options.fetchFn ?? fetch;
 
   try {
-    const response = await fetchFn(`${baseUrl}/payroll/load-detail-batch`, {
+    const response = await fetchFn(`${baseUrl}/payroll/load-detail-batch-text`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
       },
       body: JSON.stringify({
         userKey,
